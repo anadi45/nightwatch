@@ -13,7 +13,7 @@
     "deploy": "npm run type-check && npm run lint && devvit upload",
     "launch": "npm run deploy && devvit publish",
     "login": "devvit login",
-    "type-check": "tsc --noEmit",
+    "type-check": "tsc -p tsconfig.client.json --noEmit && tsc -p tsconfig.server.json --noEmit",
     "lint": "eslint 'src/**/*.{ts,tsx}'",
     "prettier": "prettier --write 'src/**/*.{ts,tsx,css,html}'"
   },

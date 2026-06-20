@@ -1,57 +1,75 @@
-import * as THREE from 'three';
+import { GameManager } from './engine/GameManager.js';
+import type { CreatureType } from './engine/Creature.js';
 
 const container = document.getElementById('game-container')!;
+const readyScreen = document.getElementById('ready-screen')!;
+const endScreen = document.getElementById('end-screen')!;
+const hud = document.getElementById('hud')!;
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x050510);
-scene.fog = new THREE.FogExp2(0x050510, 0.08);
+const scoreValue = document.getElementById('score-value')!;
+const timerValue = document.getElementById('timer-value')!;
+const streakValue = document.getElementById('streak-value')!;
+const feedback = document.getElementById('feedback')!;
 
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.set(0, 2, 5);
-camera.lookAt(0, 0, 0);
+const endScore = document.getElementById('end-score')!;
+const endStreak = document.getElementById('end-streak')!;
+const endMisses = document.getElementById('end-misses')!;
+const endTotal = document.getElementById('end-total')!;
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-container.appendChild(renderer.domElement);
+const btnStart = document.getElementById('btn-start')!;
+const btnRestart = document.getElementById('btn-restart')!;
+const btnLantern = document.getElementById('btn-lantern')!;
+const btnBell = document.getElementById('btn-bell')!;
 
-const ambient = new THREE.AmbientLight(0x111122, 0.3);
-scene.add(ambient);
+let feedbackTimer = 0;
+let bestStreak = 0;
 
-const lanternLight = new THREE.PointLight(0xf4c430, 2, 15, 2);
-lanternLight.position.set(0, 1.5, 0);
-lanternLight.castShadow = true;
-scene.add(lanternLight);
+const game = new GameManager(container, {
+  onStateChange(state) {
+    scoreValue.textContent = String(state.score);
+    timerValue.textContent = String(Math.ceil(state.timeRemaining));
+    streakValue.textContent = String(state.streak);
+    if (state.streak > bestStreak) bestStreak = state.streak;
+  },
 
-const groundGeo = new THREE.PlaneGeometry(50, 50);
-const groundMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.9 });
-const ground = new THREE.Mesh(groundGeo, groundMat);
-ground.rotation.x = -Math.PI / 2;
-ground.receiveShadow = true;
-scene.add(ground);
+  onResult(correct: boolean, _creatureType: CreatureType) {
+    feedback.textContent = correct ? 'Correct!' : 'Wrong!';
+    feedback.className = correct ? 'correct' : 'wrong';
+    clearTimeout(feedbackTimer);
+    feedbackTimer = window.setTimeout(() => {
+      feedback.className = 'hidden';
+    }, 800);
+  },
 
-const lanternGeo = new THREE.CylinderGeometry(0.1, 0.15, 0.4, 8);
-const lanternMat = new THREE.MeshStandardMaterial({ color: 0xf4c430, emissive: 0xf4c430, emissiveIntensity: 0.5 });
-const lantern = new THREE.Mesh(lanternGeo, lanternMat);
-lantern.position.set(0, 1.3, 0);
-lantern.castShadow = true;
-scene.add(lantern);
-
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  onGameEnd(state) {
+    hud.classList.add('hidden');
+    endScreen.classList.remove('hidden');
+    endScore.textContent = String(state.score);
+    endStreak.textContent = String(bestStreak);
+    endMisses.textContent = String(state.misses);
+    endTotal.textContent = String(state.creaturesHandled);
+  },
 });
 
-function animate() {
-  requestAnimationFrame(animate);
-
-  const time = performance.now() * 0.001;
-  lanternLight.intensity = 2 + Math.sin(time * 3) * 0.3;
-  lantern.position.y = 1.3 + Math.sin(time * 2) * 0.02;
-
-  renderer.render(scene, camera);
+function startGame() {
+  bestStreak = 0;
+  readyScreen.classList.add('hidden');
+  endScreen.classList.add('hidden');
+  hud.classList.remove('hidden');
+  feedback.className = 'hidden';
+  game.start();
 }
 
-animate();
+btnStart.addEventListener('click', startGame);
+btnRestart.addEventListener('click', startGame);
+
+btnLantern.addEventListener('click', () => game.handleAction('lantern'));
+btnBell.addEventListener('click', () => game.handleAction('bell'));
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'l' || e.key === 'L' || e.key === 'ArrowLeft') {
+    game.handleAction('lantern');
+  } else if (e.key === 'b' || e.key === 'B' || e.key === 'ArrowRight') {
+    game.handleAction('bell');
+  }
+});

@@ -2,12 +2,61 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <link rel="stylesheet" href="game.css" />
   <title>Nightwatch</title>
 </head>
 <body>
   <div id="game-container"></div>
+
+  <div id="hud">
+    <div id="hud-top">
+      <div id="score-display">
+        <span class="hud-label">Score</span>
+        <span id="score-value">0</span>
+      </div>
+      <div id="timer-display">
+        <span id="timer-value">60</span>
+      </div>
+      <div id="streak-display">
+        <span class="hud-label">Streak</span>
+        <span id="streak-value">0</span>
+      </div>
+    </div>
+
+    <div id="feedback" class="hidden"></div>
+
+    <div id="controls">
+      <button id="btn-lantern" class="action-btn lantern-btn">
+        <span class="btn-icon">&#128294;</span>
+        <span class="btn-label">Lantern</span>
+      </button>
+      <button id="btn-bell" class="action-btn bell-btn">
+        <span class="btn-icon">&#128276;</span>
+        <span class="btn-label">Bell</span>
+      </button>
+    </div>
+  </div>
+
+  <div id="ready-screen">
+    <h1 class="title">Tonight's Watch</h1>
+    <p class="instructions">Creatures approach from the dark.<br/>
+      <strong>Lantern</strong> — guide friendlies in.<br/>
+      <strong>Bell</strong> — ward threats off.</p>
+    <button id="btn-start" class="start-btn">Begin Watch</button>
+  </div>
+
+  <div id="end-screen" class="hidden">
+    <h1 class="title">Watch Complete</h1>
+    <div id="end-stats">
+      <div class="stat-row"><span class="stat-label">Score</span><span id="end-score">0</span></div>
+      <div class="stat-row"><span class="stat-label">Best Streak</span><span id="end-streak">0</span></div>
+      <div class="stat-row"><span class="stat-label">Misses</span><span id="end-misses">0</span></div>
+      <div class="stat-row"><span class="stat-label">Creatures</span><span id="end-total">0</span></div>
+    </div>
+    <button id="btn-restart" class="start-btn">Watch Again</button>
+  </div>
+
   <script type="module" src="game.ts"></script>
 </body>
 </html>
