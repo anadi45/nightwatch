@@ -4,7 +4,7 @@ A dark, atmospheric Three.js game that runs directly inside Reddit feeds as an i
 
 ## Hackathon
 
-This project is an entry for Reddit's [**Games with a Hook**](https://redditgameswithahook.devpost.com/) hackathon (June 17 – July 15, 2026), organized by Reddit and Phaser. The challenge: build a game on Devvit Web that gives players a compelling reason to return.
+This project is an entry for Reddit's [**Games with a Hook**](https://redditgameswithahook.devpost.com/) hackathon (June 17 – July 15, 2026), organized by Reddit.
 
 ## Tech Stack
 
