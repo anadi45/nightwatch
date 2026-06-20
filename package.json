@@ -1,0 +1,34 @@
+{
+  "name": "nightwatch",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "BSD-3-Clause",
+  "engines": {
+    "node": ">=22.2.0"
+  },
+  "scripts": {
+    "dev": "devvit start",
+    "build": "vite build",
+    "deploy": "npm run type-check && npm run lint && devvit upload",
+    "launch": "npm run deploy && devvit publish",
+    "login": "devvit login",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint 'src/**/*.{ts,tsx}'",
+    "prettier": "prettier --write 'src/**/*.{ts,tsx,css,html}'"
+  },
+  "dependencies": {
+    "@devvit/web": "0.12.24",
+    "@hono/node-server": "^1.14.1",
+    "hono": "^4.12.21",
+    "three": "^0.175.0"
+  },
+  "devDependencies": {
+    "@devvit/start": "0.12.24",
+    "@types/three": "^0.175.0",
+    "eslint": "^10.4.0",
+    "prettier": "^3.8.3",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}
