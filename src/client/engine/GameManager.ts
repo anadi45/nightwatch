@@ -16,6 +16,7 @@ interface GameState {
 
 interface GameCallbacks {
   onStateChange: (state: GameState) => void;
+  onTimerTick: (timeRemaining: number) => void;
   onResult: (correct: boolean, creatureType: CreatureType) => void;
   onGameEnd: (state: GameState) => void;
 }
@@ -36,6 +37,7 @@ export class GameManager {
   private lastTime = 0;
   private currentSpeed = BASE_SPEED;
   private animFrameId = 0;
+  private lastDisplayedSec = 0;
 
   constructor(container: HTMLElement, callbacks: GameCallbacks) {
     this.world = new World(container);
@@ -62,6 +64,7 @@ export class GameManager {
     this.currentSpeed = BASE_SPEED;
     this.spawnTimer = 0;
     this.spawnInterval = 3;
+    this.lastDisplayedSec = WATCH_DURATION;
     this.state.phase = 'playing';
     this.lastTime = performance.now();
     this.callbacks.onStateChange({ ...this.state });
@@ -95,6 +98,7 @@ export class GameManager {
 
     this.state.creaturesHandled++;
     active.dismiss();
+    this.spawnCreature();
 
     this.callbacks.onResult(correct, active.type);
     this.callbacks.onStateChange({ ...this.state });
@@ -128,6 +132,12 @@ export class GameManager {
       return;
     }
 
+    const newSec = Math.ceil(this.state.timeRemaining);
+    if (newSec !== this.lastDisplayedSec) {
+      this.lastDisplayedSec = newSec;
+      this.callbacks.onTimerTick(this.state.timeRemaining);
+    }
+
     this.spawnTimer += delta;
     if (this.spawnTimer >= this.spawnInterval) {
       this.spawnTimer = 0;
@@ -157,7 +167,6 @@ export class GameManager {
 
     this.world.update();
     this.world.render();
-    this.callbacks.onStateChange({ ...this.state });
   };
 
   private endGame(): void {

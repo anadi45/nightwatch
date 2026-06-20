@@ -27,18 +27,21 @@ let bestStreak = 0;
 const game = new GameManager(container, {
   onStateChange(state) {
     scoreValue.textContent = String(state.score);
-    timerValue.textContent = String(Math.ceil(state.timeRemaining));
     streakValue.textContent = String(state.streak);
     if (state.streak > bestStreak) bestStreak = state.streak;
   },
 
+  onTimerTick(timeRemaining: number) {
+    timerValue.textContent = String(Math.ceil(timeRemaining));
+  },
+
   onResult(correct: boolean, _creatureType: CreatureType) {
-    feedback.textContent = correct ? 'Correct!' : 'Wrong!';
+    feedback.textContent = correct ? '✓' : '✗';
     feedback.className = correct ? 'correct' : 'wrong';
     clearTimeout(feedbackTimer);
     feedbackTimer = window.setTimeout(() => {
       feedback.className = 'hidden';
-    }, 800);
+    }, 400);
   },
 
   onGameEnd(state) {
