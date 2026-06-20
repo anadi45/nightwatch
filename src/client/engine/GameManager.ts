@@ -59,7 +59,10 @@ export class GameManager {
 
   start(): void {
     this.state = this.freshState();
-    this.creatures.forEach((c) => this.world.scene.remove(c.mesh));
+    this.creatures.forEach((c) => {
+      this.world.scene.remove(c.mesh);
+      c.dispose();
+    });
     this.creatures = [];
     this.currentSpeed = BASE_SPEED;
     this.spawnTimer = 0;
@@ -99,6 +102,7 @@ export class GameManager {
     this.state.creaturesHandled++;
     active.dismiss();
     this.spawnCreature();
+    this.spawnTimer = 0;
 
     this.callbacks.onResult(correct, active.type);
     this.callbacks.onStateChange({ ...this.state });
@@ -163,7 +167,14 @@ export class GameManager {
       }
     }
 
-    this.creatures = this.creatures.filter((c) => c.isAlive());
+    this.creatures = this.creatures.filter((c) => {
+      if (!c.isAlive()) {
+        this.world.scene.remove(c.mesh);
+        c.dispose();
+        return false;
+      }
+      return true;
+    });
 
     this.world.update();
     this.world.render();

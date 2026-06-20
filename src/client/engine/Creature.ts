@@ -130,6 +130,15 @@ export class Creature {
     return this.alive;
   }
 
+  dispose(): void {
+    this.mesh.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.geometry.dispose();
+        (child.material as THREE.Material).dispose();
+      }
+    });
+  }
+
   setSpeed(speed: number): void {
     this.speed = speed;
   }

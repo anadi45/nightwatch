@@ -21,7 +21,7 @@ export class World {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(w, h);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = false;
     container.appendChild(this.renderer.domElement);
 
     const ambient = new THREE.AmbientLight(0x111122, 0.2);
