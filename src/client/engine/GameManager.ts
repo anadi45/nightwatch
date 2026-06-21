@@ -126,7 +126,8 @@ export class GameManager {
       this.state.creaturesHandled++;
       this.currentSpeed = BASE_SPEED;
     } else {
-      // Clicked a friendly — streak penalty, creature stays
+      // Clicked a friendly — flash light on them, streak penalty, creature stays
+      creature.flashTorch();
       this.state.streak = 0;
     }
 

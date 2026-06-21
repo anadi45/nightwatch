@@ -4,7 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Nightwatch is a game built for Reddit's Devvit Web platform for the "Games with a Hook" hackathon. It runs as an interactive post inside Reddit feeds. Players act as a night watchman: creatures approach from the dark, and the player must tap **Lantern** (let friendlies in) or **Bell** (ward threats off) before they reach the tower.
+Nightwatch is a first-person Three.js game built for Reddit's Devvit Web platform for the "Games with a Hook" hackathon. It runs as an interactive post inside Reddit feeds. Players hold a lantern and torch in first person. Hooded creatures approach from the dark — all look identical except for their eye color. Players must tap on **red-eyed creatures** (evil) to flash their torch and disintegrate them, while letting **blue-eyed creatures** (friendly) pass safely to the player. The core challenge is visual identification under time pressure.
+
+## Gameplay
+
+- **60-second timed sessions** with escalating difficulty
+- **All creatures look the same** — hooded figures with cloak, dark motes, and glowing eyes
+- **Blue eyes** = friendly, running straight toward the player at 1.5x speed (fleeing evil)
+- **Red eyes** = evil, using tricky movement patterns (weave, zigzag, flank) at base speed
+- **Tap on a creature** to flash your torch light on it:
+  - Evil creature → disintegrates (score +1, streak continues)
+  - Friendly creature → streak resets (creature stays, keeps approaching)
+- **Evil reaching the player** = miss (streak breaks, speed penalty)
+- **Friendly reaching the player** = peaceful vanish (neutral, they made it to safety)
+- Consecutive misses make evil creatures approach faster
 
 ## Tech Stack
 
@@ -31,15 +44,14 @@ The project follows Devvit's client/server split pattern:
 
 - **`src/client/`** — Two HTML entrypoints defined in `devvit.json`:
   - `splash.html` (inline, default) — title screen shown in Reddit feed
-  - `game.html` — full Three.js game scene, opened when user clicks Play
+  - `game.html` — full Three.js game scene with CSS loader, opened when user clicks Play
   - Splash→Game navigation uses `requestExpandedMode(event, 'game')` from `@devvit/web/client`
 
 - **`src/client/engine/`** — Game engine modules:
-  - `GameManager.ts` — game loop, scoring, spawn timing, state transitions
-  - `Creature.ts` — creature entities with 3D models built from Three.js primitives:
-    - **Lantern Spirit** (friendly): crystalline IcosahedronGeometry core with vertex displacement, rotating inner OctahedronGeometry flame, additive glow layer, orbiting crystal shards, bezier-curve wings, trailing particle motes
-    - **Shadow Wraith** (threat): LatheGeometry ribbed body, skull head, cone horns, glowing red eyes with flicker, skeletal arms with claws, tattered cloak panels, dark swirling motes, spinal ridges
-  - `World.ts` — Three.js scene, camera, lighting, environment (dark scene with fog, fence-post path, flickering lantern light)
+  - `GameManager.ts` — game loop, raycasting for tap-on-creature input, scoring, spawn timing, state transitions. Render loop runs from construction (scene visible behind ready/end overlays).
+  - `Creature.ts` — unified hooded creature model (LatheGeometry body, cone hood, cloak panels, dark motes). Eye color is the only distinguishing feature (cyan=friendly, red=evil). Movement patterns: straight, weave, zigzag, flank. States: approaching → disintegrating/fading. Invisible hit sphere for forgiving tap targets. Torch flash effect (PointLight burst on tap).
+  - `Hands.ts` — first-person hands attached to the camera. Left hand holds a glowing lantern (IcosahedronGeometry core, additive glow layers, strong PointLight). Right hand holds a torch (thrust animation on tap). Responsive positioning based on camera FOV + aspect ratio for mobile support. All materials self-lit (MeshBasicMaterial).
+  - `World.ts` — Three.js scene, camera (added to scene for hand children to render), FogExp2, fence-post path, flickering lantern light
 
 - **`src/server/`** — Hono app (`index.ts`) mounting routes:
   - `/api/*` — game API endpoints (client fetches these)
@@ -66,12 +78,20 @@ Client and server have separate tsconfig files because `@devvit/web` uses condit
 ## Performance Constraints
 
 - Devvit Web apps must work well on mobile — test responsive behavior
-- Keep draw calls low: share geometry/material instances across identical meshes, prefer `MeshBasicMaterial` for small/unlit elements, only use `transparent: true` on materials that actually need sub-1.0 opacity or additive blending
+- Camera must be added to scene (`scene.add(camera)`) for camera-child objects (hands) to render
+- Keep draw calls low: share geometry/material instances, prefer `MeshBasicMaterial` for small/unlit elements and self-lit objects (hands), only use `transparent: true` on materials that actually need sub-1.0 opacity or additive blending
 - Avoid per-frame `traverse()` — store direct references to materials/meshes that need animation
-- Minimize `PointLight` count (each light multiplies fragment shader cost); prefer a single light per creature
+- Minimize `PointLight` count (each light multiplies fragment shader cost); creature flash lights are short-lived and cleaned up
 - Dispose all Three.js geometries and materials when removing meshes from the scene to prevent memory leaks
+- Responsive hand positioning: calculate from camera FOV + aspect ratio, not hardcoded pixel values
 - The Vite build uses `@devvit/start/vite` plugin which handles the client/server split automatically
 - Server entry compiles to `dist/server/index.cjs` (CommonJS)
 - Three.js bundles are large — `chunkSizeWarningLimit` is set to 3000 in vite config
 - Node.js ≥22.2.0 required
 - Menu endpoints must return `UiResponse` type (e.g., `{ navigateTo: url }` or `{ showToast: msg }`), not plain JSON
+
+## Key Technical Gotchas
+
+- Never use `Object.assign` with `position: new THREE.Vector3()` on Three.js objects — it replaces the internal position property and breaks matrix updates. Always use `mesh.position.set(x, y, z)`.
+- Raycaster needs `intersectObjects(targets, true)` (recursive) since creatures are Groups with child meshes. Walk the parent chain from the hit object to find the creature Group.
+- Creatures need `material.colorWrite = false; material.depthWrite = false` on invisible hit-area meshes so they're raycastable but don't render.

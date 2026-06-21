@@ -39,6 +39,8 @@ export class Creature {
   private darkMotes: THREE.Mesh[] = [];
   private cloakPanels: THREE.Mesh[] = [];
   private childVelocities: THREE.Vector3[] = [];
+  private flashLight: THREE.PointLight | null = null;
+  private flashTimer = 0;
 
   constructor(config: CreatureConfig) {
     this.type = config.type;
@@ -170,9 +172,18 @@ export class Creature {
     this.mesh.add(hitArea);
   }
 
+  flashTorch(): void {
+    // Bright burst of light on the creature when tapped
+    this.flashLight = new THREE.PointLight(0xffdd55, 4, 6);
+    this.flashLight.position.set(0, 1.0, 0.5);
+    this.mesh.add(this.flashLight);
+    this.flashTimer = 0.4;
+  }
+
   disintegrate(): void {
     if (this.handled) return;
     this.handled = true;
+    this.flashTorch();
     this.startDisintegrate();
   }
 
@@ -220,6 +231,16 @@ export class Creature {
   update(delta: number): void {
     if (!this.alive) return;
     const t = (performance.now() - this.spawnTime) * 0.001;
+
+    // Flash light fade
+    if (this.flashLight && this.flashTimer > 0) {
+      this.flashTimer -= delta;
+      this.flashLight.intensity = 4 * Math.max(0, this.flashTimer / 0.4);
+      if (this.flashTimer <= 0) {
+        this.mesh.remove(this.flashLight);
+        this.flashLight = null;
+      }
+    }
 
     if (this.creatureState === 'disintegrating') {
       this.stateTimer += delta;

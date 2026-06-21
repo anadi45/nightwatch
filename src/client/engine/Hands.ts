@@ -30,7 +30,9 @@ export class Hands {
     this.torchGroup = this.buildTorch();
 
     this.lanternGroup.rotation.set(0.1, 0.15, 0.06);
+    this.lanternGroup.scale.setScalar(0.6);
     this.torchGroup.rotation.set(0.2, -0.12, -0.06);
+    this.torchGroup.scale.setScalar(0.6);
     this.torchRestRotX = 0.2;
 
     this.layoutHands();
@@ -47,8 +49,8 @@ export class Hands {
     const halfH = Math.tan(fovRad / 2) * Math.abs(z);
     const halfW = halfH * this.camera.aspect;
 
-    const xOff = halfW * 0.65;
-    const yOff = -halfH * 0.55;
+    const xOff = halfW * 0.75;
+    const yOff = -halfH * 0.78;
 
     this.lanternGroup.position.set(-xOff, yOff, z);
     this.torchGroup.position.set(xOff, yOff, z);

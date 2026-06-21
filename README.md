@@ -1,10 +1,21 @@
 # Nightwatch
 
-A dark, atmospheric Three.js game that runs directly inside Reddit feeds as an interactive post. Built on [Devvit Web](https://developers.reddit.com) — Reddit's developer platform.
+A dark, atmospheric first-person Three.js game that runs directly inside Reddit feeds as an interactive post. Built on [Devvit Web](https://developers.reddit.com) — Reddit's developer platform.
 
 ## Hackathon
 
 This project is an entry for Reddit's [**Games with a Hook**](https://redditgameswithahook.devpost.com/) hackathon (June 17 – July 15, 2026), organized by Reddit.
+
+## The Game
+
+You are the night watchman. Creatures flee toward your lantern light from the darkness — but not all of them are friendly. Every creature looks the same: a hooded figure emerging from the fog. The only way to tell friend from foe is their **eye color**.
+
+- **Blue eyes** — Friendly. They're running toward you for safety. Let them pass.
+- **Red eyes** — Evil. They're afraid of your light. Tap them to flash your torch and watch them disintegrate.
+
+The twist: torch a friendly by mistake and your streak resets. Let an evil one reach you and your situation gets worse — they speed up.
+
+60 seconds. One lantern. One torch. How many can you save?
 
 ## Tech Stack
 
@@ -54,20 +65,24 @@ npm run launch       # Deploy + publish to production
 
 ```
 nightwatch/
-├── public/assets/          # Static assets (textures, models, sounds)
 ├── src/
-│   ├── client/             # Frontend — runs in the Reddit post
-│   │   ├── splash.*        # Title screen (inline in feed)
-│   │   └── game.*          # Three.js game scene
-│   ├── server/             # Backend — runs on Devvit servers
-│   │   ├── index.ts        # Hono app, mounts all routes
-│   │   ├── core/           # Server utilities (Redis helpers, etc.)
-│   │   └── routes/         # API, menu actions, forms, triggers
+│   ├── client/                 # Frontend — runs in the Reddit post
+│   │   ├── splash.*            # Title screen (inline in feed)
+│   │   ├── game.*              # Three.js game scene + HUD + loader
+│   │   └── engine/
+│   │       ├── GameManager.ts  # Game loop, raycasting input, scoring
+│   │       ├── Creature.ts     # Unified creature model, movement, effects
+│   │       ├── Hands.ts        # First-person lantern + torch
+│   │       └── World.ts        # Scene, camera, lighting, environment
+│   ├── server/                 # Backend — runs on Devvit servers
+│   │   ├── index.ts            # Hono app, mounts all routes
+│   │   ├── core/               # Server utilities
+│   │   └── routes/             # API, menu actions, forms, triggers
 │   └── shared/
-│       └── api.ts          # TypeScript types shared across client & server
-├── devvit.json             # Devvit app configuration
-├── vite.config.ts          # Vite + Devvit build plugin
-└── tsconfig.json           # TypeScript configuration
+│       └── api.ts              # TypeScript types shared across client & server
+├── devvit.json                 # Devvit app configuration
+├── vite.config.ts              # Vite + Devvit build plugin
+└── tsconfig.json               # TypeScript configuration
 ```
 
 ## How It Works
@@ -75,14 +90,13 @@ nightwatch/
 Nightwatch runs as a Devvit Web interactive post with two entrypoints:
 
 1. **Splash screen** — Rendered inline in the Reddit feed. Shows the game title and a Play button.
-2. **Game scene** — Full Three.js 3D scene. Opens when the user clicks Play.
+2. **Game scene** — Full Three.js 3D scene in first person. Opens when the user clicks Play.
 
-Players act as a night watchman in a dark, foggy scene. Creatures approach from the darkness along a lantern-lit path:
+The player holds a glowing lantern (left hand) and a torch (right hand) in first-person view. Hooded creatures approach along a dark, foggy path — all identical in appearance except for their glowing eyes.
 
-- **Lantern Spirits** (friendly) — Crystalline golden orbs with orbiting crystal shards, ethereal wings, and trailing light motes. Tap **Lantern** to let them in.
-- **Shadow Wraiths** (threats) — Tall hooded figures with skeletal arms, flickering red eyes, tattered cloaks, and swirling dark particles. Ring the **Bell** to ward them off.
+**Friendly creatures** (blue eyes) run straight toward the player at high speed, fleeing from the darkness. They vanish peacefully on arrival. **Evil creatures** (red eyes) stalk toward the player using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
 
-The 60-second timed session escalates in speed — consecutive misses make creatures approach faster, while correct actions maintain base speed. A streak system rewards consecutive correct calls.
+Tap on a creature to flash your torch. Evil creatures disintegrate in a burst of scattered pieces. But flash a friendly by mistake and your streak resets. The challenge escalates: consecutive misses make evil creatures faster, spawn intervals tighten, and movement patterns become trickier.
 
 The client communicates with the Devvit server via API routes (`/api/*`). The server handles game state persistence, menu actions for moderators, and app lifecycle events.
 
