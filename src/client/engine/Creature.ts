@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export type CreatureType = 'human' | 'zombie';
+export type CreatureType = 'human' | 'ghost';
 export type MovementPattern = 'straight' | 'weave' | 'zigzag' | 'flank';
 
 export interface CreatureConfig {
@@ -27,11 +27,10 @@ const HUMAN_HAIR = 0x3a2a1a;
 const HUMAN_EYE = 0x44ddff;
 const HUMAN_GLOW = 0x22aacc;
 
-const ZOMBIE_SKIN = 0x4a5a3a;
-const ZOMBIE_CLOTH = 0x2a2a22;
-const ZOMBIE_BONE = 0x8a8a6a;
-const ZOMBIE_EYE = 0xff2200;
-const ZOMBIE_GLOW = 0xff1100;
+const GHOST_BODY = 0x8899aa;
+const GHOST_WISP = 0x556688;
+const GHOST_EYE = 0xff2200;
+const GHOST_GLOW = 0xff1100;
 
 export class Creature {
   readonly type: CreatureType;
@@ -74,7 +73,7 @@ export class Creature {
     this.flankTarget = this.baseX > 0 ? -0.5 : 0.5;
 
     if (this.type === 'human') this.buildHuman();
-    else this.buildZombie();
+    else this.buildGhost();
     this.addHitArea();
 
     this.mesh.position.set(this.baseX, 0, config.spawnZ);
@@ -127,66 +126,83 @@ export class Creature {
     this.mesh.add(this.coreLight);
   }
 
-  // ─── BUILD ZOMBIE (shambling threat) ──────────────────────────────
-  private buildZombie(): void {
-    const zombieSkin = new THREE.MeshStandardMaterial({ color: ZOMBIE_SKIN, roughness: 0.85 });
-    const cloth = new THREE.MeshStandardMaterial({ color: ZOMBIE_CLOTH, roughness: 0.95 });
+  // ─── BUILD GHOST (translucent floating specter) ───────────────────
+  private buildGhost(): void {
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color: GHOST_BODY, transparent: true, opacity: 0.45,
+      roughness: 0.3, metalness: 0.1, side: THREE.DoubleSide,
+    });
 
-    // Head (slightly larger, hunched forward)
-    this.head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), zombieSkin);
-    this.head.position.set(0, 1.28, 0.08);
+    // Tapered body — round head flowing into a wispy tail
+    const bodyPoints: THREE.Vector2[] = [];
+    const seg = 12;
+    for (let i = 0; i <= seg; i++) {
+      const t = i / seg;
+      const y = t * 1.6;
+      let r: number;
+      if (t < 0.15) r = 0.2 * Math.sqrt(t / 0.15);
+      else if (t < 0.4) r = 0.2 - (t - 0.15) * 0.15;
+      else if (t < 0.7) r = 0.16 + Math.sin((t - 0.4) * Math.PI / 0.3) * 0.04;
+      else r = 0.2 * (1 - (t - 0.7) / 0.3);
+      bodyPoints.push(new THREE.Vector2(Math.max(0.01, r), y));
+    }
+    const body = new THREE.Mesh(new THREE.LatheGeometry(bodyPoints, 8), bodyMat);
+    this.mesh.add(body);
+
+    // Head — slightly translucent sphere
+    this.head = new THREE.Mesh(
+      new THREE.SphereGeometry(0.16, 8, 6),
+      new THREE.MeshStandardMaterial({
+        color: GHOST_BODY, transparent: true, opacity: 0.5,
+        roughness: 0.2, metalness: 0.1,
+      })
+    );
+    this.head.position.y = 1.45;
     this.mesh.add(this.head);
 
-    // Exposed jaw
-    const jaw = new THREE.Mesh(
-      new THREE.BoxGeometry(0.08, 0.04, 0.06),
-      new THREE.MeshBasicMaterial({ color: ZOMBIE_BONE })
-    );
-    jaw.position.set(0, 1.17, 0.12);
-    jaw.rotation.x = 0.2;
-    this.mesh.add(jaw);
-
-    // Torso (hunched forward)
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.45, 0.16), cloth);
-    torso.position.set(0, 0.88, 0.04);
-    torso.rotation.x = 0.2;
-    this.mesh.add(torso);
-
-    // Arms (outstretched forward)
+    // Trailing wisp arms (reaching outward)
     for (const sx of [-1, 1]) {
-      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.025, 0.42, 4), zombieSkin);
-      arm.position.set(sx * 0.18, 1.0, 0.2);
-      arm.rotation.x = -1.2;
-      arm.rotation.z = sx * 0.15;
+      const arm = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.025, 0.008, 0.4, 4),
+        new THREE.MeshBasicMaterial({
+          color: GHOST_WISP, transparent: true, opacity: 0.3,
+        })
+      );
+      arm.position.set(sx * 0.2, 1.1, 0.08);
+      arm.rotation.x = -0.6;
+      arm.rotation.z = sx * 0.4;
       this.arms.push(arm);
       this.mesh.add(arm);
     }
 
-    // Legs (shuffling stance)
-    for (const sx of [-1, 1]) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.035, 0.42, 4), cloth);
-      leg.position.set(sx * 0.08, 0.32, 0);
-      this.legs.push(leg);
-      this.mesh.add(leg);
-    }
-
-    // Torn cloth strips hanging from torso
-    const ragMat = new THREE.MeshBasicMaterial({
-      color: ZOMBIE_CLOTH, transparent: true, opacity: 0.5, side: THREE.DoubleSide,
+    // Wispy tail tendrils
+    const tailMat = new THREE.MeshBasicMaterial({
+      color: GHOST_WISP, transparent: true, opacity: 0.2, side: THREE.DoubleSide,
     });
     for (let i = 0; i < 3; i++) {
-      const rag = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.2 + Math.random() * 0.1, 1, 3), ragMat);
-      const angle = (i / 3) * Math.PI * 2 + 0.5;
-      rag.position.set(Math.cos(angle) * 0.14, 0.6, Math.sin(angle) * 0.14);
-      rag.rotation.y = angle;
-      this.ragPanels.push(rag);
-      this.mesh.add(rag);
+      const tendril = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.3, 1, 3), tailMat);
+      const angle = (i / 3) * Math.PI * 2;
+      tendril.position.set(Math.cos(angle) * 0.08, 0.15, Math.sin(angle) * 0.08);
+      tendril.rotation.y = angle;
+      this.ragPanels.push(tendril);
+      this.mesh.add(tendril);
     }
 
-    this.addEyes(ZOMBIE_EYE, ZOMBIE_GLOW, 1.3, 0.05);
+    // Additive glow aura
+    const aura = new THREE.Mesh(
+      new THREE.SphereGeometry(0.35, 8, 8),
+      new THREE.MeshBasicMaterial({
+        color: 0x334466, transparent: true, opacity: 0.06,
+        blending: THREE.AdditiveBlending, side: THREE.BackSide,
+      })
+    );
+    aura.position.y = 1.0;
+    this.mesh.add(aura);
 
-    this.coreLight = new THREE.PointLight(ZOMBIE_GLOW, 0.5, 3);
-    this.coreLight.position.set(0, 1.3, 0.15);
+    this.addEyes(GHOST_EYE, GHOST_GLOW, 1.48, 0.055);
+
+    this.coreLight = new THREE.PointLight(GHOST_GLOW, 0.5, 3);
+    this.coreLight.position.set(0, 1.45, 0.15);
     this.mesh.add(this.coreLight);
   }
 
@@ -311,7 +327,7 @@ export class Creature {
         this.mesh.position.z += this.speed * delta;
         this.applyMovementPattern(delta, t);
         if (this.type === 'human') this.animateHuman(t);
-        else this.animateZombie(t);
+        else this.animateGhost(t);
         break;
     }
   }
@@ -399,25 +415,36 @@ export class Creature {
     this.coreLight.intensity = 0.4 + Math.sin(t * 3) * 0.1;
   }
 
-  private animateZombie(t: number): void {
-    // Shambling lurch
-    this.mesh.position.y = Math.sin(t * 3) * 0.03;
-    this.mesh.position.x += Math.sin(t * 2.5) * 0.002;
+  private animateGhost(t: number): void {
+    // Floating hover with gentle bob
+    this.mesh.position.y = 0.15 + Math.sin(t * 1.8) * 0.12 + Math.sin(t * 0.7) * 0.06;
+    this.mesh.position.x += Math.sin(t * 2.2) * 0.002;
+    this.mesh.rotation.y = Math.sin(t * 1.0) * 0.08;
 
-    if (this.arms[0]) this.arms[0].rotation.z = Math.sin(t * 1.5) * 0.12;
-    if (this.arms[1]) this.arms[1].rotation.z = -Math.sin(t * 1.5 + 0.5) * 0.12;
-    if (this.legs[0]) this.legs[0].rotation.x = Math.sin(t * 2.5) * 0.15;
-    if (this.legs[1]) this.legs[1].rotation.x = -Math.sin(t * 2.5) * 0.15;
-    if (this.head) this.head.rotation.z = Math.sin(t * 1.2) * 0.1;
-
-    for (let i = 0; i < this.ragPanels.length; i++) {
-      this.ragPanels[i].rotation.x = Math.sin(t * 2 + i * 1.3) * 0.2;
+    // Arms sway ethereally
+    if (this.arms[0]) {
+      this.arms[0].rotation.z = 0.4 + Math.sin(t * 1.3) * 0.15;
+      this.arms[0].rotation.x = -0.6 + Math.sin(t * 1.8) * 0.1;
+    }
+    if (this.arms[1]) {
+      this.arms[1].rotation.z = -0.4 - Math.sin(t * 1.3 + 0.7) * 0.15;
+      this.arms[1].rotation.x = -0.6 + Math.sin(t * 1.8 + 0.7) * 0.1;
     }
 
-    const flicker = Math.random() > 0.94 ? 0.2 : 1.0;
-    this.coreLight.intensity = (0.5 + Math.sin(t * 4) * 0.15) * flicker;
+    // Head tilts slowly
+    if (this.head) this.head.rotation.z = Math.sin(t * 0.9) * 0.12;
+
+    // Tail tendrils sway
+    for (let i = 0; i < this.ragPanels.length; i++) {
+      this.ragPanels[i].rotation.x = Math.sin(t * 1.5 + i * 1.1) * 0.25;
+      this.ragPanels[i].rotation.z = Math.cos(t * 1.2 + i * 0.8) * 0.1;
+    }
+
+    // Flickering red eyes
+    const flicker = Math.random() > 0.94 ? 0.15 : 1.0;
+    this.coreLight.intensity = (0.5 + Math.sin(t * 3.5) * 0.2) * flicker;
     for (const mat of this.eyeMats) {
-      mat.opacity = (0.85 + Math.sin(t * 6) * 0.1) * flicker;
+      mat.opacity = (0.85 + Math.sin(t * 5) * 0.1) * flicker;
     }
   }
 

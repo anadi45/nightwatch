@@ -4,17 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Nightwatch is a first-person Three.js game built for Reddit's Devvit Web platform for the "Games with a Hook" hackathon. It runs as an interactive post inside Reddit feeds. Players hold a lantern and torch in first person. Survivors and zombies approach from the dark. Players must tap on **zombies** to flash their torch and disintegrate them, while letting **human survivors** reach safety. The core challenge is quick identification under time pressure.
+Nightwatch is a first-person Three.js game built for Reddit's Devvit Web platform for the "Games with a Hook" hackathon. It runs as an interactive post inside Reddit feeds. Players hold a lantern and torch in first person. Survivors and ghosts approach from the dark. Players must tap on **ghosts** to flash their torch and banish them, while letting **human survivors** reach safety. The core challenge is quick identification under time pressure.
 
 ## Gameplay
 
 - **60-second timed sessions** with escalating difficulty
 - **Humans** (blue eyes, upright, running gait) flee straight toward the player at 1.5x speed
-- **Zombies** (red eyes, hunched, shambling, arms outstretched) use tricky movement patterns (weave, zigzag, flank) at base speed
+- **Ghosts** (red eyes, translucent, floating, trailing wisps) use tricky movement patterns (weave, zigzag, flank) at base speed
 - **Tap on a creature** to flash your torch light on it:
-  - Zombie → disintegrates (score +1, streak continues)
+  - Ghost → disintegrates (score +1, streak continues)
   - Human → streak resets (survivor stays, keeps approaching)
-- **Zombie reaching the player** = miss (streak breaks, speed penalty)
+- **Ghost reaching the player** = miss (streak breaks, speed penalty)
 - **Human reaching the player** = peaceful vanish (neutral, they made it to safety)
 - Consecutive misses make evil creatures approach faster
 
@@ -50,7 +50,7 @@ The project follows Devvit's client/server split pattern:
   - `GameManager.ts` — game loop, raycasting for tap-on-creature input, scoring, spawn timing, state transitions. Render loop runs from construction (scene visible behind ready/end overlays).
   - `Creature.ts` — two creature types built from Three.js primitives:
     - **Human** (survivor): SphereGeometry head with hair, BoxGeometry torso in warm tunic, CylinderGeometry arms/legs with running gait animation, blue eyes
-    - **Zombie** (threat): hunched posture, grey-green skin, outstretched arms, hanging jaw, torn cloth strips, red flickering eyes, shambling animation
+    - **Ghost** (threat): translucent LatheGeometry body tapering to wispy tail, floating SphereGeometry head, trailing arm wisps, tail tendrils, additive glow aura, red flickering eyes, ethereal hover animation
     - Shared: movement patterns (straight/weave/zigzag/flank), state machine (approaching→disintegrating/fading), invisible hit sphere for forgiving tap targets, torch flash effect (PointLight burst on tap)
   - `Hands.ts` — first-person hands attached to the camera. Left hand holds a glowing lantern (IcosahedronGeometry core, additive glow layers, strong PointLight). Right hand holds a torch (thrust animation on tap). Responsive positioning based on camera FOV + aspect ratio for mobile support. All materials self-lit (MeshBasicMaterial).
   - `World.ts` — Three.js scene, camera (added to scene for hand children to render), FogExp2, fence-post path, flickering lantern light

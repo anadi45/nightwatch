@@ -118,7 +118,7 @@ export class GameManager {
     }
     if (!creature) return;
 
-    if (creature.type === 'zombie') {
+    if (creature.type === 'ghost') {
       creature.disintegrate();
       this.state.score++;
       this.state.streak++;
@@ -162,7 +162,7 @@ export class GameManager {
   }
 
   private spawnCreature(): void {
-    const type: CreatureType = Math.random() > 0.5 ? 'human' : 'zombie';
+    const type: CreatureType = Math.random() > 0.5 ? 'human' : 'ghost';
     const lane = this.pickLane();
     const spawnZ = SPAWN_Z_MIN + Math.random() * (SPAWN_Z_MAX - SPAWN_Z_MIN);
 
@@ -227,7 +227,7 @@ export class GameManager {
       creature.update(delta);
 
       if (creature.isAlive() && !creature.wasHandled() && creature.hasReachedTarget()) {
-        if (creature.type === 'zombie') {
+        if (creature.type === 'ghost') {
           this.state.misses++;
           this.state.consecutiveMisses++;
           this.state.streak = 0;

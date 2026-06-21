@@ -8,12 +8,12 @@ This project is an entry for Reddit's [**Games with a Hook**](https://redditgame
 
 ## The Game
 
-You are the night watchman. Survivors flee toward your lantern light from the darkness — but zombies stalk behind them. Humans run straight toward you for safety. Zombies shamble from the shadows using unpredictable paths.
+You are the night watchman. Survivors flee toward your lantern light from the darkness — but ghosts haunt the shadows behind them. Humans run straight toward you for safety. Ghosts float from the darkness using unpredictable paths.
 
 - **Humans** — Upright, running, blue eyes. Let them reach you safely.
-- **Zombies** — Hunched, arms outstretched, red eyes. Tap them to flash your torch and disintegrate them.
+- **Ghosts** — Translucent, floating, red eyes. Tap them to flash your torch and banish them.
 
-Torch a survivor by mistake and your streak resets. Let a zombie reach you and things get worse — they speed up. As the 60-second watch progresses, spawn rates increase and zombie movement gets trickier.
+Torch a survivor by mistake and your streak resets. Let a ghost reach you and things get worse — they speed up. As the 60-second watch progresses, spawn rates increase and ghost movement gets trickier.
 
 One lantern. One torch. How many can you save?
 
@@ -92,11 +92,11 @@ Nightwatch runs as a Devvit Web interactive post with two entrypoints:
 1. **Splash screen** — Rendered inline in the Reddit feed. Shows the game title and a Play button.
 2. **Game scene** — Full Three.js 3D scene in first person. Opens when the user clicks Play.
 
-The player holds a glowing lantern (left hand) and a torch (right hand) in first-person view. Survivors and zombies approach along a dark, foggy path.
+The player holds a glowing lantern (left hand) and a torch (right hand) in first-person view. Survivors and ghosts approach along a dark, foggy path.
 
-**Humans** run straight toward the player at high speed, fleeing the zombie horde. They vanish peacefully on arrival. **Zombies** shamble toward the player with arms outstretched, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
+**Humans** run straight toward the player at high speed, fleeing the haunted darkness. They vanish peacefully on arrival. **Ghosts** float toward the player as translucent specters with trailing wisps, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
 
-Tap on a zombie to flash your torch and watch it disintegrate into scattered pieces. But flash a survivor by mistake and your streak resets. The challenge escalates: consecutive misses make zombies faster, spawn intervals tighten, and movement patterns become trickier.
+Tap on a ghost to flash your torch and watch it disintegrate into scattered pieces. But flash a survivor by mistake and your streak resets. The challenge escalates: consecutive misses make ghosts faster, spawn intervals tighten, and movement patterns become trickier.
 
 The client communicates with the Devvit server via API routes (`/api/*`). The server handles game state persistence, menu actions for moderators, and app lifecycle events.
 
