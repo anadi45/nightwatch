@@ -17,6 +17,7 @@ export class World {
     this.camera = new THREE.PerspectiveCamera(60, w / h, 0.1, 100);
     this.camera.position.set(0, 2.5, 6);
     this.camera.lookAt(0, 0.5, -5);
+    this.scene.add(this.camera);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(w, h);

@@ -58,6 +58,11 @@ Client and server have separate tsconfig files because `@devvit/web` uses condit
 - `tsconfig.server.json` — includes `src/server` + `src/shared`, no browser condition
 - `tsconfig.json` — project references root (not used directly)
 
+## Workflow
+
+- Only commit and push to GitHub after the user has tested and confirmed changes work
+- Keep CLAUDE.md and README.md up to date with significant changes
+
 ## Performance Constraints
 
 - Devvit Web apps must work well on mobile — test responsive behavior

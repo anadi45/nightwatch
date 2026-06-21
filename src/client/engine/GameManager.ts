@@ -1,8 +1,9 @@
+import * as THREE from 'three';
 import { World } from './World.js';
-import { Creature, CreatureType } from './Creature.js';
+import { Creature, CreatureType, MovementPattern } from './Creature.js';
+import { Hands } from './Hands.js';
 
 export type GamePhase = 'ready' | 'playing' | 'ended';
-export type PlayerAction = 'lantern' | 'bell';
 
 interface GameState {
   phase: GamePhase;
@@ -17,32 +18,43 @@ interface GameState {
 interface GameCallbacks {
   onStateChange: (state: GameState) => void;
   onTimerTick: (timeRemaining: number) => void;
-  onResult: (correct: boolean, creatureType: CreatureType) => void;
   onGameEnd: (state: GameState) => void;
 }
 
 const WATCH_DURATION = 60;
-const BASE_SPEED = 1.2;
-const SPAWN_Z = -20;
+const BASE_SPEED = 1.4;
+const FRIENDLY_SPEED_MULT = 1.5;
+const SPAWN_Z_MIN = -18;
+const SPAWN_Z_MAX = -12;
 const TARGET_Z = 4;
 const SPEED_PENALTY = 0.15;
 
+const LANES = [-2.2, -1.1, 0, 1.1, 2.2];
+
 export class GameManager {
   private world: World;
+  private hands: Hands;
   private callbacks: GameCallbacks;
   private state: GameState;
   private creatures: Creature[] = [];
   private spawnTimer = 0;
-  private spawnInterval = 3;
+  private spawnInterval = 2;
   private lastTime = 0;
   private currentSpeed = BASE_SPEED;
   private animFrameId = 0;
   private lastDisplayedSec = 0;
+  private lastLane = 2;
+
+  private raycaster = new THREE.Raycaster();
+  private pointer = new THREE.Vector2();
 
   constructor(container: HTMLElement, callbacks: GameCallbacks) {
     this.world = new World(container);
+    this.hands = new Hands(this.world.camera);
     this.callbacks = callbacks;
     this.state = this.freshState();
+    this.lastTime = performance.now();
+    this.loop();
   }
 
   private freshState(): GameState {
@@ -66,56 +78,112 @@ export class GameManager {
     this.creatures = [];
     this.currentSpeed = BASE_SPEED;
     this.spawnTimer = 0;
-    this.spawnInterval = 3;
+    this.spawnInterval = 2;
+    this.lastLane = 2;
     this.lastDisplayedSec = WATCH_DURATION;
     this.state.phase = 'playing';
     this.lastTime = performance.now();
     this.callbacks.onStateChange({ ...this.state });
     this.spawnCreature();
-    this.loop();
   }
 
-  handleAction(action: PlayerAction): void {
+  handleTap(ndcX: number, ndcY: number): void {
     if (this.state.phase !== 'playing') return;
 
-    const active = this.creatures.find(
-      (c) => c.isAlive() && !c.hasReachedTarget()
-    );
-    if (!active) return;
+    this.hands.thrustTorch();
 
-    const correct =
-      (action === 'lantern' && active.type === 'friendly') ||
-      (action === 'bell' && active.type === 'threat');
+    this.pointer.set(ndcX, ndcY);
+    this.raycaster.setFromCamera(this.pointer, this.world.camera);
 
-    if (correct) {
+    // Build map of creature groups for hit detection
+    const groupToCreature = new Map<THREE.Object3D, Creature>();
+    const targets: THREE.Object3D[] = [];
+    for (const c of this.creatures) {
+      if (c.isApproaching()) {
+        groupToCreature.set(c.mesh, c);
+        targets.push(c.mesh);
+      }
+    }
+
+    const intersects = this.raycaster.intersectObjects(targets, true);
+    if (intersects.length === 0) return;
+
+    // Walk up the parent chain to find the creature group
+    let hitObj: THREE.Object3D | null = intersects[0].object;
+    let creature: Creature | undefined;
+    while (hitObj) {
+      creature = groupToCreature.get(hitObj);
+      if (creature) break;
+      hitObj = hitObj.parent;
+    }
+    if (!creature) return;
+
+    if (creature.type === 'threat') {
+      creature.disintegrate();
       this.state.score++;
       this.state.streak++;
       this.state.consecutiveMisses = 0;
+      this.state.creaturesHandled++;
       this.currentSpeed = BASE_SPEED;
     } else {
-      this.state.misses++;
+      // Clicked a friendly — streak penalty, creature stays
       this.state.streak = 0;
-      this.state.consecutiveMisses++;
-      this.currentSpeed += SPEED_PENALTY * this.state.consecutiveMisses;
     }
 
-    this.state.creaturesHandled++;
-    active.dismiss();
-    this.spawnCreature();
-    this.spawnTimer = 0;
-
-    this.callbacks.onResult(correct, active.type);
     this.callbacks.onStateChange({ ...this.state });
+  }
+
+  private pickLane(): number {
+    let lane: number;
+    do {
+      lane = Math.floor(Math.random() * LANES.length);
+    } while (lane === this.lastLane && LANES.length > 1);
+    this.lastLane = lane;
+    return lane;
+  }
+
+  private pickPattern(): MovementPattern {
+    const elapsed = WATCH_DURATION - this.state.timeRemaining;
+    if (elapsed < 8) {
+      return Math.random() < 0.6 ? 'straight' : 'weave';
+    }
+    if (elapsed < 25) {
+      const r = Math.random();
+      if (r < 0.3) return 'straight';
+      if (r < 0.6) return 'weave';
+      if (r < 0.85) return 'zigzag';
+      return 'flank';
+    }
+    const r = Math.random();
+    if (r < 0.15) return 'straight';
+    if (r < 0.4) return 'weave';
+    if (r < 0.7) return 'zigzag';
+    return 'flank';
   }
 
   private spawnCreature(): void {
     const type: CreatureType = Math.random() > 0.5 ? 'friendly' : 'threat';
+    const lane = this.pickLane();
+    const spawnZ = SPAWN_Z_MIN + Math.random() * (SPAWN_Z_MAX - SPAWN_Z_MIN);
+
+    // Friendlies run straight and faster (fleeing toward player)
+    // Threats use tricky movement patterns
+    const speed = type === 'friendly'
+      ? this.currentSpeed * FRIENDLY_SPEED_MULT
+      : this.currentSpeed;
+    const pattern: MovementPattern = type === 'friendly'
+      ? 'straight'
+      : this.pickPattern();
+
     const creature = new Creature({
       type,
-      speed: this.currentSpeed,
-      spawnZ: SPAWN_Z,
+      speed,
+      spawnZ,
       targetZ: TARGET_Z,
+      spawnX: LANES[lane],
+      pattern,
     });
+
     this.creatures.push(creature);
     this.world.scene.add(creature.mesh);
   }
@@ -127,15 +195,23 @@ export class GameManager {
     const delta = Math.min((now - this.lastTime) / 1000, 0.1);
     this.lastTime = now;
 
-    if (this.state.phase !== 'playing') return;
+    this.hands.update(delta, now * 0.001);
+    this.world.update();
 
-    this.state.timeRemaining -= delta;
-    if (this.state.timeRemaining <= 0) {
-      this.state.timeRemaining = 0;
-      this.endGame();
-      return;
+    if (this.state.phase === 'playing') {
+      this.state.timeRemaining -= delta;
+      if (this.state.timeRemaining <= 0) {
+        this.state.timeRemaining = 0;
+        this.endGame();
+      } else {
+        this.tickGame(delta);
+      }
     }
 
+    this.world.render();
+  };
+
+  private tickGame(delta: number): void {
     const newSec = Math.ceil(this.state.timeRemaining);
     if (newSec !== this.lastDisplayedSec) {
       this.lastDisplayedSec = newSec;
@@ -145,24 +221,26 @@ export class GameManager {
     this.spawnTimer += delta;
     if (this.spawnTimer >= this.spawnInterval) {
       this.spawnTimer = 0;
-      this.spawnInterval = Math.max(1.5, this.spawnInterval - 0.05);
+      this.spawnInterval = Math.max(1.2, this.spawnInterval - 0.06);
       this.spawnCreature();
     }
 
     for (const creature of this.creatures) {
-      creature.setSpeed(this.currentSpeed);
       creature.update(delta);
 
-      if (creature.isAlive() && creature.hasReachedTarget()) {
+      if (creature.isAlive() && !creature.wasHandled() && creature.hasReachedTarget()) {
         if (creature.type === 'threat') {
+          // Evil reached player — miss
           this.state.misses++;
           this.state.consecutiveMisses++;
           this.state.streak = 0;
           this.currentSpeed += SPEED_PENALTY * this.state.consecutiveMisses;
-          this.callbacks.onResult(false, creature.type);
+          creature.reachPlayer();
+        } else {
+          // Friendly reached safety — peaceful vanish
+          creature.peacefulVanish();
         }
         this.state.creaturesHandled++;
-        creature.dismiss();
         this.callbacks.onStateChange({ ...this.state });
       }
     }
@@ -175,10 +253,7 @@ export class GameManager {
       }
       return true;
     });
-
-    this.world.update();
-    this.world.render();
-  };
+  }
 
   private endGame(): void {
     this.state.phase = 'ended';
@@ -188,5 +263,6 @@ export class GameManager {
 
   destroy(): void {
     cancelAnimationFrame(this.animFrameId);
+    this.hands.dispose();
   }
 }

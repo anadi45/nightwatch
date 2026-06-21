@@ -1,13 +1,18 @@
 import * as THREE from 'three';
 
 export type CreatureType = 'friendly' | 'threat';
+export type MovementPattern = 'straight' | 'weave' | 'zigzag' | 'flank';
 
 export interface CreatureConfig {
   type: CreatureType;
   speed: number;
   spawnZ: number;
   targetZ: number;
+  spawnX?: number;
+  pattern?: MovementPattern;
 }
+
+type CreatureState = 'approaching' | 'disintegrating' | 'fading';
 
 export class Creature {
   readonly type: CreatureType;
@@ -15,21 +20,25 @@ export class Creature {
   private speed: number;
   private targetZ: number;
   private alive = true;
-  private fadeOut = false;
-  private fadeSpeed = 3;
-  private fadeProgress = 1;
+  private handled = false;
+  private creatureState: CreatureState = 'approaching';
+  private stateTimer = 0;
   private spawnTime = performance.now();
   private coreLight: THREE.PointLight;
 
-  private innerCore: THREE.Mesh | null = null;
-  private crystalShards: THREE.Mesh[] = [];
-  private wingMeshes: THREE.Mesh[] = [];
-  private trailMotes: THREE.Mesh[] = [];
+  private pattern: MovementPattern;
+  private baseX: number;
+  private weaveAmplitude: number;
+  private weaveFreq: number;
+  private zigzagDir = 1;
+  private zigzagTimer = 0;
+  private zigzagInterval: number;
+  private flankTarget: number;
 
-  private cloakPanels: THREE.Mesh[] = [];
-  private armGroups: THREE.Group[] = [];
-  private darkMotes: THREE.Mesh[] = [];
   private eyeMats: THREE.MeshBasicMaterial[] = [];
+  private darkMotes: THREE.Mesh[] = [];
+  private cloakPanels: THREE.Mesh[] = [];
+  private childVelocities: THREE.Vector3[] = [];
 
   constructor(config: CreatureConfig) {
     this.type = config.type;
@@ -38,370 +47,263 @@ export class Creature {
     this.mesh = new THREE.Group();
     this.coreLight = new THREE.PointLight(0x000000, 0, 0);
 
-    if (this.type === 'friendly') {
-      this.buildFriendly();
-    } else {
-      this.buildThreat();
-    }
+    this.pattern = config.pattern ?? 'straight';
+    this.baseX = config.spawnX ?? (Math.random() - 0.5) * 3;
+    this.weaveAmplitude = 0.8 + Math.random() * 1.2;
+    this.weaveFreq = 1.5 + Math.random() * 1.5;
+    this.zigzagInterval = 0.4 + Math.random() * 0.4;
+    this.flankTarget = this.baseX > 0 ? -0.5 : 0.5;
 
-    this.mesh.position.set(
-      (Math.random() - 0.5) * 2,
-      0,
-      config.spawnZ
-    );
+    this.buildCreature();
+    this.mesh.position.set(this.baseX, 0, config.spawnZ);
   }
 
-  // ─── LANTERN SPIRIT ───────────────────────────────────────────────
-  private buildFriendly(): void {
-    // Crystalline core with vertex displacement
-    const coreGeo = new THREE.IcosahedronGeometry(0.28, 1);
-    const pos = coreGeo.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-      const len = Math.sqrt(x * x + y * y + z * z);
-      const n = 1 + Math.sin(x * 17) * Math.cos(y * 13) * Math.sin(z * 19) * 0.12;
-      pos.setXYZ(i, (x / len) * 0.28 * n, (y / len) * 0.28 * n, (z / len) * 0.28 * n);
-    }
-    coreGeo.computeVertexNormals();
+  private buildCreature(): void {
+    const eyeColor = this.type === 'friendly' ? 0x44ddff : 0xff2200;
+    const glowColor = this.type === 'friendly' ? 0x22aacc : 0xff1100;
+    const lightColor = this.type === 'friendly' ? 0x44aacc : 0xff1100;
 
-    const core = new THREE.Mesh(coreGeo, new THREE.MeshStandardMaterial({
-      color: 0xffcc44, emissive: 0xffaa22, emissiveIntensity: 1.0,
-      roughness: 0.08, metalness: 0.3,
-    }));
-    core.position.y = 1.0;
-    this.mesh.add(core);
-
-    // Inner rotating flame
-    this.innerCore = new THREE.Mesh(
-      new THREE.OctahedronGeometry(0.14, 0),
-      new THREE.MeshBasicMaterial({
-        color: 0xffffff, transparent: true, opacity: 0.8,
-        blending: THREE.AdditiveBlending,
-      })
-    );
-    this.innerCore.position.y = 1.0;
-    this.mesh.add(this.innerCore);
-
-    // Single glow layer
-    const glow = new THREE.Mesh(
-      new THREE.SphereGeometry(0.5, 10, 10),
-      new THREE.MeshBasicMaterial({
-        color: 0xffeebb, transparent: true, opacity: 0.12,
-        blending: THREE.AdditiveBlending, side: THREE.BackSide,
-      })
-    );
-    glow.position.y = 1.0;
-    this.mesh.add(glow);
-
-    // 3 floating crystal shards
-    const shardMat = new THREE.MeshStandardMaterial({
-      color: 0xffeedd, emissive: 0xffcc88, emissiveIntensity: 0.7,
-      roughness: 0.1, metalness: 0.4,
-    });
-    for (let i = 0; i < 3; i++) {
-      const shardGeo = new THREE.OctahedronGeometry(0.05, 0);
-      shardGeo.scale(1, 2.8, 1);
-      const shard = new THREE.Mesh(shardGeo, shardMat);
-      const angle = (i / 3) * Math.PI * 2;
-      shard.position.set(Math.cos(angle) * 0.22, 1.48, Math.sin(angle) * 0.22);
-      this.crystalShards.push(shard);
-      this.mesh.add(shard);
-    }
-
-    // 1 pair of wings
-    const wingMat = new THREE.MeshBasicMaterial({
-      color: 0xffddaa, transparent: true, opacity: 0.35,
-      side: THREE.DoubleSide,
-    });
-    for (const side of [-1, 1]) {
-      const shape = new THREE.Shape();
-      shape.moveTo(0, 0);
-      shape.bezierCurveTo(0.18, 0.08, 0.4, 0.38, 0.22, 0.65);
-      shape.bezierCurveTo(0.12, 0.48, 0.04, 0.22, 0, 0);
-      const wing = new THREE.Mesh(new THREE.ShapeGeometry(shape), wingMat);
-      wing.position.set(side * 0.12, 0.7, 0);
-      wing.rotation.z = side * 0.2;
-      wing.rotation.y = side * 0.12;
-      if (side === -1) wing.scale.x = -1;
-      this.wingMeshes.push(wing);
-      this.mesh.add(wing);
-    }
-
-    // Eyes
-    const eyeGeo = new THREE.SphereGeometry(0.032, 4, 4);
-    eyeGeo.scale(1.4, 0.65, 1);
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x1a1a3a });
-    for (const sx of [-1, 1]) {
-      const eye = new THREE.Mesh(eyeGeo, eyeMat);
-      eye.position.set(sx * 0.09, 1.06, 0.25);
-      this.mesh.add(eye);
-    }
-
-    // 4 trailing motes
-    for (let i = 0; i < 4; i++) {
-      const mote = new THREE.Mesh(
-        new THREE.SphereGeometry(0.02, 3, 3),
-        new THREE.MeshBasicMaterial({
-          color: 0xffeeaa, transparent: true, opacity: 0.5,
-          blending: THREE.AdditiveBlending,
-        })
-      );
-      this.trailMotes.push(mote);
-      this.mesh.add(mote);
-    }
-
-    // Single warm light
-    this.coreLight = new THREE.PointLight(0xffaa44, 1.8, 8);
-    this.coreLight.position.set(0, 1.0, 0);
-    this.mesh.add(this.coreLight);
-  }
-
-  // ─── SHADOW WRAITH ────────────────────────────────────────────────
-  private buildThreat(): void {
-    // Tall ribbed body
+    // Hooded body — identical for both types
     const bodyPoints: THREE.Vector2[] = [];
-    const seg = 16;
+    const seg = 14;
     for (let i = 0; i <= seg; i++) {
       const t = i / seg;
       const y = t * 1.8;
       let r: number;
-      if (t < 0.08) r = 0.38 * Math.sqrt(t / 0.08);
-      else if (t < 0.25) r = 0.38 - (t - 0.08) * 1.1;
-      else if (t < 0.5) r = 0.19 + Math.sin(t * 35) * 0.025;
-      else if (t < 0.68) r = 0.19 + (t - 0.5) * 0.35;
-      else if (t < 0.82) r = 0.255 - (t - 0.68) * 1.2;
+      if (t < 0.08) r = 0.35 * Math.sqrt(t / 0.08);
+      else if (t < 0.25) r = 0.35 - (t - 0.08) * 1.0;
+      else if (t < 0.55) r = 0.18 + Math.sin(t * 30) * 0.015;
+      else if (t < 0.7) r = 0.18 + (t - 0.55) * 0.3;
+      else if (t < 0.85) r = 0.225 - (t - 0.7) * 0.8;
       else {
-        const ht = (t - 0.82) / 0.18;
-        r = 0.09 + Math.sin(ht * Math.PI) * 0.07;
+        const ht = (t - 0.85) / 0.15;
+        r = 0.1 + Math.sin(ht * Math.PI) * 0.06;
       }
       bodyPoints.push(new THREE.Vector2(Math.max(0.01, r), y));
     }
     this.mesh.add(new THREE.Mesh(
       new THREE.LatheGeometry(bodyPoints, 8),
       new THREE.MeshStandardMaterial({
-        color: 0x08030f, emissive: 0x12001e, emissiveIntensity: 0.35,
-        roughness: 0.95,
+        color: 0x0a0512, emissive: 0x0a0010, emissiveIntensity: 0.2,
+        transparent: true, roughness: 0.95,
       })
     ));
 
-    // Skull
-    const skullGeo = new THREE.SphereGeometry(0.17, 8, 6);
-    skullGeo.scale(1.05, 1.35, 1.15);
-    const skull = new THREE.Mesh(skullGeo, new THREE.MeshStandardMaterial({
-      color: 0x160a1e, emissive: 0x0c0014, emissiveIntensity: 0.4,
-      roughness: 0.65, metalness: 0.2,
-    }));
-    skull.position.set(0, 1.68, 0.04);
-    this.mesh.add(skull);
+    // Hood
+    const hood = new THREE.Mesh(
+      new THREE.ConeGeometry(0.2, 0.35, 6),
+      new THREE.MeshStandardMaterial({
+        color: 0x080410, emissive: 0x060008, emissiveIntensity: 0.15,
+        transparent: true, roughness: 1.0,
+      })
+    );
+    hood.position.y = 1.7;
+    this.mesh.add(hood);
 
-    // Horns
-    const hornMat = new THREE.MeshStandardMaterial({
-      color: 0x18081a, emissive: 0x1e0030, emissiveIntensity: 0.25,
-      roughness: 0.35, metalness: 0.5,
-    });
-    for (const side of [-1, 1]) {
-      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.45, 4), hornMat);
-      horn.position.set(side * 0.2, 1.9, -0.06);
-      horn.rotation.z = side * -0.4;
-      horn.rotation.x = -0.2;
-      this.mesh.add(horn);
-    }
-
-    // Eyes — store material refs for flicker (no per-frame traverse)
+    // Eyes — the ONLY distinguishing feature
     for (const sx of [-1, 1]) {
       const socket = new THREE.Mesh(
-        new THREE.SphereGeometry(0.05, 4, 4),
-        new THREE.MeshBasicMaterial({ color: 0x000000 })
+        new THREE.SphereGeometry(0.04, 4, 4),
+        new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true })
       );
-      socket.position.set(sx * 0.075, 1.7, 0.15);
+      socket.position.set(sx * 0.06, 1.52, 0.12);
       this.mesh.add(socket);
 
       const eyeMat = new THREE.MeshBasicMaterial({
-        color: 0xff1100, transparent: true, opacity: 1.0,
+        color: eyeColor, transparent: true, opacity: 0.95,
       });
       this.eyeMats.push(eyeMat);
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.028, 4, 4), eyeMat);
-      eye.position.set(sx * 0.075, 1.7, 0.175);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.022, 4, 4), eyeMat);
+      eye.position.set(sx * 0.06, 1.52, 0.14);
       this.mesh.add(eye);
 
-      const glowMat = new THREE.MeshBasicMaterial({
-        color: 0xff2200, transparent: true, opacity: 0.15,
+      const gMat = new THREE.MeshBasicMaterial({
+        color: glowColor, transparent: true, opacity: 0.12,
         blending: THREE.AdditiveBlending,
       });
-      this.eyeMats.push(glowMat);
-      const eyeGlow = new THREE.Mesh(new THREE.SphereGeometry(0.06, 4, 4), glowMat);
-      eyeGlow.position.set(sx * 0.075, 1.7, 0.175);
-      this.mesh.add(eyeGlow);
+      this.eyeMats.push(gMat);
+      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.055, 4, 4), gMat);
+      glow.position.set(sx * 0.06, 1.52, 0.14);
+      this.mesh.add(glow);
     }
 
-    // Arms (upper + forearm per side)
-    const armMat = new THREE.MeshBasicMaterial({ color: 0x120820 });
-    for (const side of [-1, 1]) {
-      const arm = new THREE.Group();
-
-      const upper = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.02, 0.016, 0.45, 3), armMat
-      );
-      upper.position.set(side * 0.3, 1.0, 0.08);
-      upper.rotation.z = side * -0.55;
-      upper.rotation.x = 0.25;
-      arm.add(upper);
-
-      const forearm = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.016, 0.008, 0.35, 3), armMat
-      );
-      forearm.position.set(side * 0.44, 0.72, 0.18);
-      forearm.rotation.z = side * -0.85;
-      forearm.rotation.x = 0.5;
-      arm.add(forearm);
-
-      const claw = new THREE.Mesh(
-        new THREE.ConeGeometry(0.015, 0.12, 3), armMat
-      );
-      claw.position.set(side * 0.5, 0.56, 0.25);
-      claw.rotation.z = side * -1.0;
-      claw.rotation.x = 0.6;
-      arm.add(claw);
-
-      this.armGroups.push(arm);
-      this.mesh.add(arm);
-    }
-
-    // 4 cloak panels
+    // Cloak panels
     const cloakMat = new THREE.MeshBasicMaterial({
-      color: 0x0b0416, transparent: true, opacity: 0.5,
+      color: 0x0a0416, transparent: true, opacity: 0.4,
       side: THREE.DoubleSide,
     });
     for (let i = 0; i < 4; i++) {
       const angle = (i / 4) * Math.PI * 2;
       const panel = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.22, 0.7, 1, 3),
+        new THREE.PlaneGeometry(0.2, 0.55, 1, 3),
         cloakMat
       );
-      panel.position.set(Math.cos(angle) * 0.18, 0.38, Math.sin(angle) * 0.18);
+      panel.position.set(Math.cos(angle) * 0.15, 0.32, Math.sin(angle) * 0.15);
       panel.rotation.y = angle;
       this.cloakPanels.push(panel);
       this.mesh.add(panel);
     }
 
-    // 3 spinal ridges
-    const ridgeMat = new THREE.MeshBasicMaterial({ color: 0x1e0a2a });
-    for (let i = 0; i < 3; i++) {
-      const ridge = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.08, 3), ridgeMat);
-      ridge.position.set(0, 0.7 + i * 0.25, -0.16);
-      ridge.rotation.x = -0.35;
-      this.mesh.add(ridge);
-    }
-
-    // 5 dark motes
-    for (let i = 0; i < 5; i++) {
+    // Dark motes
+    for (let i = 0; i < 4; i++) {
       const mote = new THREE.Mesh(
-        new THREE.SphereGeometry(0.015, 3, 3),
+        new THREE.SphereGeometry(0.012, 3, 3),
         new THREE.MeshBasicMaterial({
-          color: 0x1a0030, transparent: true, opacity: 0.35,
+          color: 0x110022, transparent: true, opacity: 0.3,
         })
       );
       this.darkMotes.push(mote);
       this.mesh.add(mote);
     }
 
-    // Single red light
-    this.coreLight = new THREE.PointLight(0xff1100, 0.7, 5);
-    this.coreLight.position.set(0, 1.7, 0.2);
+    // Eye light
+    this.coreLight = new THREE.PointLight(lightColor, 0.5, 3);
+    this.coreLight.position.set(0, 1.52, 0.15);
     this.mesh.add(this.coreLight);
+
+    // Invisible hit area for tap targeting
+    const hitMat = new THREE.MeshBasicMaterial();
+    hitMat.colorWrite = false;
+    hitMat.depthWrite = false;
+    const hitArea = new THREE.Mesh(new THREE.SphereGeometry(0.5, 6, 6), hitMat);
+    hitArea.position.y = 0.9;
+    this.mesh.add(hitArea);
   }
 
-  // ─── UPDATE ───────────────────────────────────────────────────────
+  disintegrate(): void {
+    if (this.handled) return;
+    this.handled = true;
+    this.startDisintegrate();
+  }
+
+  peacefulVanish(): void {
+    if (this.handled) return;
+    this.handled = true;
+    this.startFade();
+  }
+
+  reachPlayer(): void {
+    if (this.handled) return;
+    this.handled = true;
+    this.startFade();
+  }
+
+  isApproaching(): boolean {
+    return this.creatureState === 'approaching' && this.alive;
+  }
+
+  private startDisintegrate(): void {
+    this.creatureState = 'disintegrating';
+    this.stateTimer = 0;
+    this.coreLight.intensity = 2.5;
+    const center = new THREE.Vector3(0, 0.9, 0);
+    for (const child of this.mesh.children) {
+      const dir = child.position.clone().sub(center);
+      dir.normalize();
+      this.childVelocities.push(
+        dir.multiplyScalar(2 + Math.random() * 3)
+          .add(new THREE.Vector3(0, 1 + Math.random() * 2, 0))
+      );
+      if (child instanceof THREE.Mesh) {
+        const mat = child.material as THREE.MeshBasicMaterial | THREE.MeshStandardMaterial;
+        mat.transparent = true;
+        if (mat.opacity === undefined || mat.opacity === 0) mat.opacity = 1;
+      }
+    }
+  }
+
+  private startFade(): void {
+    this.creatureState = 'fading';
+    this.stateTimer = 0;
+  }
+
   update(delta: number): void {
     if (!this.alive) return;
     const t = (performance.now() - this.spawnTime) * 0.001;
 
-    if (this.fadeOut) {
-      this.fadeProgress -= this.fadeSpeed * delta;
-      if (this.fadeProgress <= 0) { this.alive = false; return; }
-      this.mesh.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          const mat = child.material as THREE.Material & { opacity?: number };
-          if (mat.transparent && mat.opacity !== undefined) {
-            mat.opacity = Math.min(mat.opacity, this.fadeProgress);
-          }
+    if (this.creatureState === 'disintegrating') {
+      this.stateTimer += delta;
+      if (this.stateTimer > 0.5) { this.alive = false; return; }
+      const fade = Math.max(0, 1 - this.stateTimer * 2.5);
+      for (let i = 0; i < this.mesh.children.length; i++) {
+        const child = this.mesh.children[i];
+        const vel = this.childVelocities[i];
+        if (vel) {
+          child.position.x += vel.x * delta;
+          child.position.y += vel.y * delta;
+          child.position.z += vel.z * delta;
         }
-      });
+        if (child instanceof THREE.Mesh) {
+          (child.material as any).opacity = Math.min((child.material as any).opacity, fade);
+        }
+      }
       this.coreLight.intensity *= 0.82;
       return;
     }
 
+    if (this.creatureState === 'fading') {
+      this.stateTimer += delta;
+      if (this.stateTimer > 0.35) { this.alive = false; return; }
+      const fade = Math.max(0, 1 - this.stateTimer * 3);
+      this.mesh.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          const mat = child.material as any;
+          if (mat.transparent) mat.opacity = Math.min(mat.opacity, fade);
+        }
+      });
+      this.coreLight.intensity *= 0.8;
+      return;
+    }
+
     this.mesh.position.z += this.speed * delta;
-
-    if (this.type === 'friendly') this.updateFriendly(t);
-    else this.updateThreat(t);
+    this.applyMovementPattern(delta, t);
+    this.updateVisuals(t);
   }
 
-  private updateFriendly(t: number): void {
-    this.mesh.position.y = Math.sin(t * 1.5) * 0.1 + Math.sin(t * 0.7) * 0.05;
-    this.mesh.rotation.y = Math.sin(t * 0.5) * 0.08;
-
-    if (this.innerCore) {
-      this.innerCore.rotation.x = t * 1.3;
-      this.innerCore.rotation.y = t * 0.9;
+  private applyMovementPattern(delta: number, t: number): void {
+    switch (this.pattern) {
+      case 'weave':
+        this.mesh.position.x = this.baseX + Math.sin(t * this.weaveFreq) * this.weaveAmplitude;
+        break;
+      case 'zigzag':
+        this.zigzagTimer += delta;
+        if (this.zigzagTimer >= this.zigzagInterval) {
+          this.zigzagTimer = 0;
+          this.zigzagDir *= -1;
+        }
+        this.mesh.position.x += this.zigzagDir * this.speed * 1.5 * delta;
+        this.mesh.position.x = Math.max(-3, Math.min(3, this.mesh.position.x));
+        break;
+      case 'flank': {
+        const p = Math.min(1, t * 0.5);
+        this.mesh.position.x = this.baseX + (this.flankTarget - this.baseX) * p;
+        break;
+      }
     }
-
-    for (let i = 0; i < this.crystalShards.length; i++) {
-      const angle = t * 0.7 + (i / this.crystalShards.length) * Math.PI * 2;
-      const r = 0.22 + Math.sin(t * 2 + i) * 0.04;
-      this.crystalShards[i].position.set(
-        Math.cos(angle) * r, 1.48 + Math.sin(t * 1.6 + i * 1.2) * 0.06,
-        Math.sin(angle) * r
-      );
-      this.crystalShards[i].rotation.y = t * 2 + i;
-    }
-
-    for (let i = 0; i < this.wingMeshes.length; i++) {
-      const side = i === 0 ? -1 : 1;
-      const flutter = Math.sin(t * 3.5) * 0.18;
-      this.wingMeshes[i].rotation.z = side * (0.2 + flutter);
-    }
-
-    for (let i = 0; i < this.trailMotes.length; i++) {
-      const phase = (i / this.trailMotes.length) * Math.PI * 2;
-      const orbitR = 0.45 + Math.sin(t * 1.5 + i * 0.9) * 0.15;
-      this.trailMotes[i].position.set(
-        Math.cos(t * 1.1 + phase) * orbitR,
-        0.75 + Math.sin(t * 2.2 + phase) * 0.3,
-        Math.sin(t * 1.1 + phase) * orbitR
-      );
-    }
-
-    this.coreLight.intensity = 1.8 + Math.sin(t * 2.5) * 0.4;
   }
 
-  private updateThreat(t: number): void {
-    this.mesh.position.y = Math.sin(t * 4.5) * 0.02;
-    this.mesh.position.x += Math.sin(t * 7.5) * 0.003;
+  private updateVisuals(t: number): void {
+    this.mesh.position.y = Math.sin(t * 3) * 0.02;
+    this.mesh.rotation.y = Math.sin(t * 1.5) * 0.05;
 
     for (let i = 0; i < this.cloakPanels.length; i++) {
-      this.cloakPanels[i].rotation.x = Math.sin(t * 2.2 + i * 1.1) * 0.15;
-    }
-
-    for (let i = 0; i < this.armGroups.length; i++) {
-      this.armGroups[i].rotation.x = Math.sin(t * 1.6 + i * Math.PI) * 0.08;
+      this.cloakPanels[i].rotation.x = Math.sin(t * 2 + i * 1.2) * 0.12;
     }
 
     for (let i = 0; i < this.darkMotes.length; i++) {
       const phase = (i / this.darkMotes.length) * Math.PI * 2;
-      const r = 0.28 + Math.sin(t * 2 + i * 0.5) * 0.12;
-      const yBase = 0.3 + (i / this.darkMotes.length) * 1.4;
+      const r = 0.22 + Math.sin(t * 1.8 + i * 0.6) * 0.1;
       this.darkMotes[i].position.set(
-        Math.cos(t * 1.3 + phase) * r,
-        yBase + Math.sin(t * 2.8 + phase) * 0.1,
-        Math.sin(t * 1.3 + phase) * r
+        Math.cos(t * 1.2 + phase) * r,
+        0.5 + (i / this.darkMotes.length) * 1.0 + Math.sin(t * 2.5 + phase) * 0.08,
+        Math.sin(t * 1.2 + phase) * r
       );
     }
 
-    const flicker = Math.random() > 0.93 ? 0.08 : 1.0;
-    this.coreLight.intensity = (0.7 + Math.sin(t * 5.5) * 0.2) * flicker;
+    const flicker = Math.random() > 0.95 ? 0.25 : 1.0;
+    this.coreLight.intensity = (0.5 + Math.sin(t * 4) * 0.15) * flicker;
     for (const mat of this.eyeMats) {
-      mat.opacity = (0.8 + Math.sin(t * 8) * 0.2) * flicker;
+      mat.opacity = (0.85 + Math.sin(t * 6) * 0.1) * flicker;
     }
   }
 
@@ -409,12 +311,12 @@ export class Creature {
     return this.mesh.position.z >= this.targetZ;
   }
 
-  dismiss(): void {
-    this.fadeOut = true;
-  }
-
   isAlive(): boolean {
     return this.alive;
+  }
+
+  wasHandled(): boolean {
+    return this.handled;
   }
 
   setSpeed(speed: number): void {
