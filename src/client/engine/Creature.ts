@@ -60,6 +60,8 @@ export class Creature {
   private ragPanels: THREE.Mesh[] = [];
   private childVelocities: THREE.Vector3[] = [];
   private flashLight: THREE.PointLight | null = null;
+  private flashGlow: THREE.Mesh | null = null;
+  private flashBeam: THREE.Mesh | null = null;
   private flashTimer = 0;
 
   constructor(config: CreatureConfig) {
@@ -238,9 +240,33 @@ export class Creature {
   // ─── PUBLIC API ───────────────────────────────────────────────────
   flashTorch(): void {
     if (this.flashLight) return;
-    this.flashLight = new THREE.PointLight(0xffdd55, FLASH_INTENSITY, 6);
-    this.flashLight.position.set(0, 1.0, 0.5);
+
+    // Short-range light to illuminate the creature's own meshes only
+    this.flashLight = new THREE.PointLight(0xffdd55, FLASH_INTENSITY, 1.2);
+    this.flashLight.position.set(0, 0.9, 0.2);
     this.mesh.add(this.flashLight);
+
+    // Visible flashlight beam cone from player direction (+Z) toward creature body
+    const beamGeo = new THREE.ConeGeometry(0.35, 2.0, 6, 1, true);
+    beamGeo.rotateX(Math.PI / 2);
+    this.flashBeam = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({
+      color: 0xffdd44, transparent: true, opacity: 0.1,
+      blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    }));
+    this.flashBeam.position.set(0, 0.9, 1.0);
+    this.mesh.add(this.flashBeam);
+
+    // Impact glow where the beam hits the creature body
+    this.flashGlow = new THREE.Mesh(
+      new THREE.SphereGeometry(0.3, 6, 6),
+      new THREE.MeshBasicMaterial({
+        color: 0xffee88, transparent: true, opacity: 0.3,
+        blending: THREE.AdditiveBlending,
+      })
+    );
+    this.flashGlow.position.set(0, 0.9, 0.05);
+    this.mesh.add(this.flashGlow);
+
     this.flashTimer = FLASH_DURATION;
   }
 
@@ -335,10 +361,26 @@ export class Creature {
   private updateFlash(delta: number): void {
     if (!this.flashLight || this.flashTimer <= 0) return;
     this.flashTimer -= delta;
-    this.flashLight.intensity = FLASH_INTENSITY * Math.max(0, this.flashTimer / FLASH_DURATION);
+    const fade = Math.max(0, this.flashTimer / FLASH_DURATION);
+    this.flashLight.intensity = FLASH_INTENSITY * fade;
+    if (this.flashGlow) {
+      (this.flashGlow.material as THREE.MeshBasicMaterial).opacity = 0.3 * fade;
+    }
+    if (this.flashBeam) {
+      (this.flashBeam.material as THREE.MeshBasicMaterial).opacity = 0.1 * fade;
+    }
     if (this.flashTimer <= 0) {
       this.mesh.remove(this.flashLight);
       this.flashLight = null;
+      for (const obj of [this.flashGlow, this.flashBeam]) {
+        if (obj) {
+          this.mesh.remove(obj);
+          obj.geometry.dispose();
+          (obj.material as THREE.Material).dispose();
+        }
+      }
+      this.flashGlow = null;
+      this.flashBeam = null;
     }
   }
 
