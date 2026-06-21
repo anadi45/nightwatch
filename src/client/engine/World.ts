@@ -30,7 +30,6 @@ export class World {
 
     this.lanternLight = new THREE.PointLight(0xf4c430, 1.5, 20, 2);
     this.lanternLight.position.set(0, 3, 5);
-    this.lanternLight.castShadow = true;
     this.scene.add(this.lanternLight);
 
     this.buildEnvironment();
@@ -53,7 +52,6 @@ export class World {
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.z = -10;
-    ground.receiveShadow = true;
     this.scene.add(ground);
 
     const pathGeo = new THREE.PlaneGeometry(3, 40);

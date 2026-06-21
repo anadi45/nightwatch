@@ -4,19 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Nightwatch is a first-person Three.js game built for Reddit's Devvit Web platform for the "Games with a Hook" hackathon. It runs as an interactive post inside Reddit feeds. Players hold a lantern and torch in first person. Hooded creatures approach from the dark — all look identical except for their eye color. Players must tap on **red-eyed creatures** (evil) to flash their torch and disintegrate them, while letting **blue-eyed creatures** (friendly) pass safely to the player. The core challenge is visual identification under time pressure.
+Nightwatch is a first-person Three.js game built for Reddit's Devvit Web platform for the "Games with a Hook" hackathon. It runs as an interactive post inside Reddit feeds. Players hold a lantern and torch in first person. Survivors and zombies approach from the dark. Players must tap on **zombies** to flash their torch and disintegrate them, while letting **human survivors** reach safety. The core challenge is quick identification under time pressure.
 
 ## Gameplay
 
 - **60-second timed sessions** with escalating difficulty
-- **All creatures look the same** — hooded figures with cloak, dark motes, and glowing eyes
-- **Blue eyes** = friendly, running straight toward the player at 1.5x speed (fleeing evil)
-- **Red eyes** = evil, using tricky movement patterns (weave, zigzag, flank) at base speed
+- **Humans** (blue eyes, upright, running gait) flee straight toward the player at 1.5x speed
+- **Zombies** (red eyes, hunched, shambling, arms outstretched) use tricky movement patterns (weave, zigzag, flank) at base speed
 - **Tap on a creature** to flash your torch light on it:
-  - Evil creature → disintegrates (score +1, streak continues)
-  - Friendly creature → streak resets (creature stays, keeps approaching)
-- **Evil reaching the player** = miss (streak breaks, speed penalty)
-- **Friendly reaching the player** = peaceful vanish (neutral, they made it to safety)
+  - Zombie → disintegrates (score +1, streak continues)
+  - Human → streak resets (survivor stays, keeps approaching)
+- **Zombie reaching the player** = miss (streak breaks, speed penalty)
+- **Human reaching the player** = peaceful vanish (neutral, they made it to safety)
 - Consecutive misses make evil creatures approach faster
 
 ## Tech Stack
@@ -49,7 +48,10 @@ The project follows Devvit's client/server split pattern:
 
 - **`src/client/engine/`** — Game engine modules:
   - `GameManager.ts` — game loop, raycasting for tap-on-creature input, scoring, spawn timing, state transitions. Render loop runs from construction (scene visible behind ready/end overlays).
-  - `Creature.ts` — unified hooded creature model (LatheGeometry body, cone hood, cloak panels, dark motes). Eye color is the only distinguishing feature (cyan=friendly, red=evil). Movement patterns: straight, weave, zigzag, flank. States: approaching → disintegrating/fading. Invisible hit sphere for forgiving tap targets. Torch flash effect (PointLight burst on tap).
+  - `Creature.ts` — two creature types built from Three.js primitives:
+    - **Human** (survivor): SphereGeometry head with hair, BoxGeometry torso in warm tunic, CylinderGeometry arms/legs with running gait animation, blue eyes
+    - **Zombie** (threat): hunched posture, grey-green skin, outstretched arms, hanging jaw, torn cloth strips, red flickering eyes, shambling animation
+    - Shared: movement patterns (straight/weave/zigzag/flank), state machine (approaching→disintegrating/fading), invisible hit sphere for forgiving tap targets, torch flash effect (PointLight burst on tap)
   - `Hands.ts` — first-person hands attached to the camera. Left hand holds a glowing lantern (IcosahedronGeometry core, additive glow layers, strong PointLight). Right hand holds a torch (thrust animation on tap). Responsive positioning based on camera FOV + aspect ratio for mobile support. All materials self-lit (MeshBasicMaterial).
   - `World.ts` — Three.js scene, camera (added to scene for hand children to render), FogExp2, fence-post path, flickering lantern light
 

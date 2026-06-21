@@ -8,14 +8,14 @@ This project is an entry for Reddit's [**Games with a Hook**](https://redditgame
 
 ## The Game
 
-You are the night watchman. Creatures flee toward your lantern light from the darkness — but not all of them are friendly. Every creature looks the same: a hooded figure emerging from the fog. The only way to tell friend from foe is their **eye color**.
+You are the night watchman. Survivors flee toward your lantern light from the darkness — but zombies stalk behind them. Humans run straight toward you for safety. Zombies shamble from the shadows using unpredictable paths.
 
-- **Blue eyes** — Friendly. They're running toward you for safety. Let them pass.
-- **Red eyes** — Evil. They're afraid of your light. Tap them to flash your torch and watch them disintegrate.
+- **Humans** — Upright, running, blue eyes. Let them reach you safely.
+- **Zombies** — Hunched, arms outstretched, red eyes. Tap them to flash your torch and disintegrate them.
 
-The twist: torch a friendly by mistake and your streak resets. Let an evil one reach you and your situation gets worse — they speed up.
+Torch a survivor by mistake and your streak resets. Let a zombie reach you and things get worse — they speed up. As the 60-second watch progresses, spawn rates increase and zombie movement gets trickier.
 
-60 seconds. One lantern. One torch. How many can you save?
+One lantern. One torch. How many can you save?
 
 ## Tech Stack
 
@@ -92,11 +92,11 @@ Nightwatch runs as a Devvit Web interactive post with two entrypoints:
 1. **Splash screen** — Rendered inline in the Reddit feed. Shows the game title and a Play button.
 2. **Game scene** — Full Three.js 3D scene in first person. Opens when the user clicks Play.
 
-The player holds a glowing lantern (left hand) and a torch (right hand) in first-person view. Hooded creatures approach along a dark, foggy path — all identical in appearance except for their glowing eyes.
+The player holds a glowing lantern (left hand) and a torch (right hand) in first-person view. Survivors and zombies approach along a dark, foggy path.
 
-**Friendly creatures** (blue eyes) run straight toward the player at high speed, fleeing from the darkness. They vanish peacefully on arrival. **Evil creatures** (red eyes) stalk toward the player using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
+**Humans** run straight toward the player at high speed, fleeing the zombie horde. They vanish peacefully on arrival. **Zombies** shamble toward the player with arms outstretched, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
 
-Tap on a creature to flash your torch. Evil creatures disintegrate in a burst of scattered pieces. But flash a friendly by mistake and your streak resets. The challenge escalates: consecutive misses make evil creatures faster, spawn intervals tighten, and movement patterns become trickier.
+Tap on a zombie to flash your torch and watch it disintegrate into scattered pieces. But flash a survivor by mistake and your streak resets. The challenge escalates: consecutive misses make zombies faster, spawn intervals tighten, and movement patterns become trickier.
 
 The client communicates with the Devvit server via API routes (`/api/*`). The server handles game state persistence, menu actions for moderators, and app lifecycle events.
 

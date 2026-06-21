@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export type CreatureType = 'friendly' | 'threat';
+export type CreatureType = 'human' | 'zombie';
 export type MovementPattern = 'straight' | 'weave' | 'zigzag' | 'flank';
 
 export interface CreatureConfig {
@@ -13,6 +13,25 @@ export interface CreatureConfig {
 }
 
 type CreatureState = 'approaching' | 'disintegrating' | 'fading';
+
+const DISINTEGRATE_DURATION = 0.5;
+const FADE_DURATION = 0.35;
+const FLASH_DURATION = 0.4;
+const FLASH_INTENSITY = 4;
+const HIT_RADIUS = 0.5;
+
+const HUMAN_SKIN = 0xc4956a;
+const HUMAN_TUNIC = 0x6b5e4d;
+const HUMAN_PANTS = 0x4a3f35;
+const HUMAN_HAIR = 0x3a2a1a;
+const HUMAN_EYE = 0x44ddff;
+const HUMAN_GLOW = 0x22aacc;
+
+const ZOMBIE_SKIN = 0x4a5a3a;
+const ZOMBIE_CLOTH = 0x2a2a22;
+const ZOMBIE_BONE = 0x8a8a6a;
+const ZOMBIE_EYE = 0xff2200;
+const ZOMBIE_GLOW = 0xff1100;
 
 export class Creature {
   readonly type: CreatureType;
@@ -28,16 +47,18 @@ export class Creature {
 
   private pattern: MovementPattern;
   private baseX: number;
-  private weaveAmplitude: number;
-  private weaveFreq: number;
+  private weaveAmplitude = 0.8 + Math.random() * 1.2;
+  private weaveFreq = 1.5 + Math.random() * 1.5;
   private zigzagDir = 1;
   private zigzagTimer = 0;
-  private zigzagInterval: number;
+  private zigzagInterval = 0.4 + Math.random() * 0.4;
   private flankTarget: number;
 
   private eyeMats: THREE.MeshBasicMaterial[] = [];
-  private darkMotes: THREE.Mesh[] = [];
-  private cloakPanels: THREE.Mesh[] = [];
+  private arms: THREE.Mesh[] = [];
+  private legs: THREE.Mesh[] = [];
+  private head: THREE.Mesh | null = null;
+  private ragPanels: THREE.Mesh[] = [];
   private childVelocities: THREE.Vector3[] = [];
   private flashLight: THREE.PointLight | null = null;
   private flashTimer = 0;
@@ -48,169 +69,213 @@ export class Creature {
     this.targetZ = config.targetZ;
     this.mesh = new THREE.Group();
     this.coreLight = new THREE.PointLight(0x000000, 0, 0);
-
     this.pattern = config.pattern ?? 'straight';
     this.baseX = config.spawnX ?? (Math.random() - 0.5) * 3;
-    this.weaveAmplitude = 0.8 + Math.random() * 1.2;
-    this.weaveFreq = 1.5 + Math.random() * 1.5;
-    this.zigzagInterval = 0.4 + Math.random() * 0.4;
     this.flankTarget = this.baseX > 0 ? -0.5 : 0.5;
 
-    this.buildCreature();
+    if (this.type === 'human') this.buildHuman();
+    else this.buildZombie();
+    this.addHitArea();
+
     this.mesh.position.set(this.baseX, 0, config.spawnZ);
   }
 
-  private buildCreature(): void {
-    const eyeColor = this.type === 'friendly' ? 0x44ddff : 0xff2200;
-    const glowColor = this.type === 'friendly' ? 0x22aacc : 0xff1100;
-    const lightColor = this.type === 'friendly' ? 0x44aacc : 0xff1100;
+  // ─── BUILD HUMAN (survivor running toward player) ─────────────────
+  private buildHuman(): void {
+    const skin = new THREE.MeshStandardMaterial({ color: HUMAN_SKIN, roughness: 0.8 });
+    const tunic = new THREE.MeshStandardMaterial({ color: HUMAN_TUNIC, roughness: 0.9 });
+    const pants = new THREE.MeshStandardMaterial({ color: HUMAN_PANTS, roughness: 0.9 });
 
-    // Hooded body — identical for both types
-    const bodyPoints: THREE.Vector2[] = [];
-    const seg = 14;
-    for (let i = 0; i <= seg; i++) {
-      const t = i / seg;
-      const y = t * 1.8;
-      let r: number;
-      if (t < 0.08) r = 0.35 * Math.sqrt(t / 0.08);
-      else if (t < 0.25) r = 0.35 - (t - 0.08) * 1.0;
-      else if (t < 0.55) r = 0.18 + Math.sin(t * 30) * 0.015;
-      else if (t < 0.7) r = 0.18 + (t - 0.55) * 0.3;
-      else if (t < 0.85) r = 0.225 - (t - 0.7) * 0.8;
-      else {
-        const ht = (t - 0.85) / 0.15;
-        r = 0.1 + Math.sin(ht * Math.PI) * 0.06;
-      }
-      bodyPoints.push(new THREE.Vector2(Math.max(0.01, r), y));
-    }
-    this.mesh.add(new THREE.Mesh(
-      new THREE.LatheGeometry(bodyPoints, 8),
-      new THREE.MeshStandardMaterial({
-        color: 0x0a0512, emissive: 0x0a0010, emissiveIntensity: 0.2,
-        transparent: true, roughness: 0.95,
-      })
-    ));
+    // Head
+    this.head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), skin);
+    this.head.position.y = 1.38;
+    this.mesh.add(this.head);
 
-    // Hood
-    const hood = new THREE.Mesh(
-      new THREE.ConeGeometry(0.2, 0.35, 6),
-      new THREE.MeshStandardMaterial({
-        color: 0x080410, emissive: 0x060008, emissiveIntensity: 0.15,
-        transparent: true, roughness: 1.0,
-      })
+    // Hair
+    const hair = new THREE.Mesh(
+      new THREE.SphereGeometry(0.13, 8, 4, 0, Math.PI * 2, 0, Math.PI * 0.55),
+      new THREE.MeshBasicMaterial({ color: HUMAN_HAIR })
     );
-    hood.position.y = 1.7;
-    this.mesh.add(hood);
+    hair.position.y = 1.42;
+    this.mesh.add(hair);
 
-    // Eyes — the ONLY distinguishing feature
+    // Torso
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.4, 0.14), tunic);
+    torso.position.y = 1.0;
+    this.mesh.add(torso);
+
+    // Arms
     for (const sx of [-1, 1]) {
-      const socket = new THREE.Mesh(
-        new THREE.SphereGeometry(0.04, 4, 4),
-        new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true })
-      );
-      socket.position.set(sx * 0.06, 1.52, 0.12);
-      this.mesh.add(socket);
-
-      const eyeMat = new THREE.MeshBasicMaterial({
-        color: eyeColor, transparent: true, opacity: 0.95,
-      });
-      this.eyeMats.push(eyeMat);
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.022, 4, 4), eyeMat);
-      eye.position.set(sx * 0.06, 1.52, 0.14);
-      this.mesh.add(eye);
-
-      const gMat = new THREE.MeshBasicMaterial({
-        color: glowColor, transparent: true, opacity: 0.12,
-        blending: THREE.AdditiveBlending,
-      });
-      this.eyeMats.push(gMat);
-      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.055, 4, 4), gMat);
-      glow.position.set(sx * 0.06, 1.52, 0.14);
-      this.mesh.add(glow);
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.38, 4), skin);
+      arm.position.set(sx * 0.16, 0.95, 0);
+      this.arms.push(arm);
+      this.mesh.add(arm);
     }
 
-    // Cloak panels
-    const cloakMat = new THREE.MeshBasicMaterial({
-      color: 0x0a0416, transparent: true, opacity: 0.4,
-      side: THREE.DoubleSide,
-    });
-    for (let i = 0; i < 4; i++) {
-      const angle = (i / 4) * Math.PI * 2;
-      const panel = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.2, 0.55, 1, 3),
-        cloakMat
-      );
-      panel.position.set(Math.cos(angle) * 0.15, 0.32, Math.sin(angle) * 0.15);
-      panel.rotation.y = angle;
-      this.cloakPanels.push(panel);
-      this.mesh.add(panel);
+    // Legs
+    for (const sx of [-1, 1]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.035, 0.45, 4), pants);
+      leg.position.set(sx * 0.07, 0.35, 0);
+      this.legs.push(leg);
+      this.mesh.add(leg);
     }
 
-    // Dark motes
-    for (let i = 0; i < 4; i++) {
-      const mote = new THREE.Mesh(
-        new THREE.SphereGeometry(0.012, 3, 3),
-        new THREE.MeshBasicMaterial({
-          color: 0x110022, transparent: true, opacity: 0.3,
-        })
-      );
-      this.darkMotes.push(mote);
-      this.mesh.add(mote);
-    }
+    this.addEyes(HUMAN_EYE, HUMAN_GLOW, 1.4, 0.04);
 
-    // Eye light
-    this.coreLight = new THREE.PointLight(lightColor, 0.5, 3);
-    this.coreLight.position.set(0, 1.52, 0.15);
+    this.coreLight = new THREE.PointLight(HUMAN_GLOW, 0.4, 3);
+    this.coreLight.position.set(0, 1.4, 0.15);
     this.mesh.add(this.coreLight);
-
-    // Invisible hit area for tap targeting
-    const hitMat = new THREE.MeshBasicMaterial();
-    hitMat.colorWrite = false;
-    hitMat.depthWrite = false;
-    const hitArea = new THREE.Mesh(new THREE.SphereGeometry(0.5, 6, 6), hitMat);
-    hitArea.position.y = 0.9;
-    this.mesh.add(hitArea);
   }
 
+  // ─── BUILD ZOMBIE (shambling threat) ──────────────────────────────
+  private buildZombie(): void {
+    const zombieSkin = new THREE.MeshStandardMaterial({ color: ZOMBIE_SKIN, roughness: 0.85 });
+    const cloth = new THREE.MeshStandardMaterial({ color: ZOMBIE_CLOTH, roughness: 0.95 });
+
+    // Head (slightly larger, hunched forward)
+    this.head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), zombieSkin);
+    this.head.position.set(0, 1.28, 0.08);
+    this.mesh.add(this.head);
+
+    // Exposed jaw
+    const jaw = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.04, 0.06),
+      new THREE.MeshBasicMaterial({ color: ZOMBIE_BONE })
+    );
+    jaw.position.set(0, 1.17, 0.12);
+    jaw.rotation.x = 0.2;
+    this.mesh.add(jaw);
+
+    // Torso (hunched forward)
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.45, 0.16), cloth);
+    torso.position.set(0, 0.88, 0.04);
+    torso.rotation.x = 0.2;
+    this.mesh.add(torso);
+
+    // Arms (outstretched forward)
+    for (const sx of [-1, 1]) {
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.025, 0.42, 4), zombieSkin);
+      arm.position.set(sx * 0.18, 1.0, 0.2);
+      arm.rotation.x = -1.2;
+      arm.rotation.z = sx * 0.15;
+      this.arms.push(arm);
+      this.mesh.add(arm);
+    }
+
+    // Legs (shuffling stance)
+    for (const sx of [-1, 1]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.035, 0.42, 4), cloth);
+      leg.position.set(sx * 0.08, 0.32, 0);
+      this.legs.push(leg);
+      this.mesh.add(leg);
+    }
+
+    // Torn cloth strips hanging from torso
+    const ragMat = new THREE.MeshBasicMaterial({
+      color: ZOMBIE_CLOTH, transparent: true, opacity: 0.5, side: THREE.DoubleSide,
+    });
+    for (let i = 0; i < 3; i++) {
+      const rag = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.2 + Math.random() * 0.1, 1, 3), ragMat);
+      const angle = (i / 3) * Math.PI * 2 + 0.5;
+      rag.position.set(Math.cos(angle) * 0.14, 0.6, Math.sin(angle) * 0.14);
+      rag.rotation.y = angle;
+      this.ragPanels.push(rag);
+      this.mesh.add(rag);
+    }
+
+    this.addEyes(ZOMBIE_EYE, ZOMBIE_GLOW, 1.3, 0.05);
+
+    this.coreLight = new THREE.PointLight(ZOMBIE_GLOW, 0.5, 3);
+    this.coreLight.position.set(0, 1.3, 0.15);
+    this.mesh.add(this.coreLight);
+  }
+
+  // ─── SHARED BUILD HELPERS ─────────────────────────────────────────
+  private addEyes(color: number, glowColor: number, headY: number, spacing: number): void {
+    for (const sx of [-1, 1]) {
+      const eyeMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 });
+      this.eyeMats.push(eyeMat);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.02, 4, 4), eyeMat);
+      eye.position.set(sx * spacing, headY, 0.1);
+      this.mesh.add(eye);
+
+      const glowMat = new THREE.MeshBasicMaterial({
+        color: glowColor, transparent: true, opacity: 0.15,
+        blending: THREE.AdditiveBlending,
+      });
+      this.eyeMats.push(glowMat);
+      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.05, 4, 4), glowMat);
+      glow.position.set(sx * spacing, headY, 0.1);
+      this.mesh.add(glow);
+    }
+  }
+
+  private addHitArea(): void {
+    const mat = new THREE.MeshBasicMaterial();
+    mat.colorWrite = false;
+    mat.depthWrite = false;
+    const hit = new THREE.Mesh(new THREE.SphereGeometry(HIT_RADIUS, 6, 6), mat);
+    hit.position.y = 0.85;
+    this.mesh.add(hit);
+  }
+
+  // ─── PUBLIC API ───────────────────────────────────────────────────
   flashTorch(): void {
-    // Bright burst of light on the creature when tapped
-    this.flashLight = new THREE.PointLight(0xffdd55, 4, 6);
+    if (this.flashLight) return;
+    this.flashLight = new THREE.PointLight(0xffdd55, FLASH_INTENSITY, 6);
     this.flashLight.position.set(0, 1.0, 0.5);
     this.mesh.add(this.flashLight);
-    this.flashTimer = 0.4;
+    this.flashTimer = FLASH_DURATION;
   }
 
   disintegrate(): void {
     if (this.handled) return;
     this.handled = true;
     this.flashTorch();
-    this.startDisintegrate();
+    this.beginDisintegrate();
   }
 
   peacefulVanish(): void {
     if (this.handled) return;
     this.handled = true;
-    this.startFade();
+    this.beginFade();
   }
 
   reachPlayer(): void {
     if (this.handled) return;
     this.handled = true;
-    this.startFade();
+    this.beginFade();
   }
 
   isApproaching(): boolean {
     return this.creatureState === 'approaching' && this.alive;
   }
 
-  private startDisintegrate(): void {
+  hasReachedTarget(): boolean {
+    return this.mesh.position.z >= this.targetZ;
+  }
+
+  isAlive(): boolean {
+    return this.alive;
+  }
+
+  wasHandled(): boolean {
+    return this.handled;
+  }
+
+  setSpeed(speed: number): void {
+    this.speed = speed;
+  }
+
+  // ─── STATE TRANSITIONS ────────────────────────────────────────────
+  private beginDisintegrate(): void {
     this.creatureState = 'disintegrating';
     this.stateTimer = 0;
     this.coreLight.intensity = 2.5;
-    const center = new THREE.Vector3(0, 0.9, 0);
+
+    const center = new THREE.Vector3(0, 0.85, 0);
     for (const child of this.mesh.children) {
-      const dir = child.position.clone().sub(center);
-      dir.normalize();
+      const dir = child.position.clone().sub(center).normalize();
       this.childVelocities.push(
         dir.multiplyScalar(2 + Math.random() * 3)
           .add(new THREE.Vector3(0, 1 + Math.random() * 2, 0))
@@ -218,69 +283,85 @@ export class Creature {
       if (child instanceof THREE.Mesh) {
         const mat = child.material as THREE.MeshBasicMaterial | THREE.MeshStandardMaterial;
         mat.transparent = true;
-        if (mat.opacity === undefined || mat.opacity === 0) mat.opacity = 1;
+        mat.opacity = mat.opacity || 1;
       }
     }
   }
 
-  private startFade(): void {
+  private beginFade(): void {
     this.creatureState = 'fading';
     this.stateTimer = 0;
   }
 
+  // ─── UPDATE ───────────────────────────────────────────────────────
   update(delta: number): void {
     if (!this.alive) return;
     const t = (performance.now() - this.spawnTime) * 0.001;
 
-    // Flash light fade
-    if (this.flashLight && this.flashTimer > 0) {
-      this.flashTimer -= delta;
-      this.flashLight.intensity = 4 * Math.max(0, this.flashTimer / 0.4);
-      if (this.flashTimer <= 0) {
-        this.mesh.remove(this.flashLight);
-        this.flashLight = null;
-      }
-    }
+    this.updateFlash(delta);
 
-    if (this.creatureState === 'disintegrating') {
-      this.stateTimer += delta;
-      if (this.stateTimer > 0.5) { this.alive = false; return; }
-      const fade = Math.max(0, 1 - this.stateTimer * 2.5);
-      for (let i = 0; i < this.mesh.children.length; i++) {
-        const child = this.mesh.children[i];
-        const vel = this.childVelocities[i];
-        if (vel) {
-          child.position.x += vel.x * delta;
-          child.position.y += vel.y * delta;
-          child.position.z += vel.z * delta;
-        }
-        if (child instanceof THREE.Mesh) {
-          (child.material as any).opacity = Math.min((child.material as any).opacity, fade);
-        }
-      }
-      this.coreLight.intensity *= 0.82;
-      return;
+    switch (this.creatureState) {
+      case 'disintegrating':
+        if (this.updateDisintegrating(delta)) return;
+        break;
+      case 'fading':
+        if (this.updateFading(delta)) return;
+        break;
+      case 'approaching':
+        this.mesh.position.z += this.speed * delta;
+        this.applyMovementPattern(delta, t);
+        if (this.type === 'human') this.animateHuman(t);
+        else this.animateZombie(t);
+        break;
     }
-
-    if (this.creatureState === 'fading') {
-      this.stateTimer += delta;
-      if (this.stateTimer > 0.35) { this.alive = false; return; }
-      const fade = Math.max(0, 1 - this.stateTimer * 3);
-      this.mesh.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          const mat = child.material as any;
-          if (mat.transparent) mat.opacity = Math.min(mat.opacity, fade);
-        }
-      });
-      this.coreLight.intensity *= 0.8;
-      return;
-    }
-
-    this.mesh.position.z += this.speed * delta;
-    this.applyMovementPattern(delta, t);
-    this.updateVisuals(t);
   }
 
+  private updateFlash(delta: number): void {
+    if (!this.flashLight || this.flashTimer <= 0) return;
+    this.flashTimer -= delta;
+    this.flashLight.intensity = FLASH_INTENSITY * Math.max(0, this.flashTimer / FLASH_DURATION);
+    if (this.flashTimer <= 0) {
+      this.mesh.remove(this.flashLight);
+      this.flashLight = null;
+    }
+  }
+
+  private updateDisintegrating(delta: number): boolean {
+    this.stateTimer += delta;
+    if (this.stateTimer > DISINTEGRATE_DURATION) { this.alive = false; return true; }
+    const fade = Math.max(0, 1 - this.stateTimer / DISINTEGRATE_DURATION * 1.5);
+    for (let i = 0; i < this.mesh.children.length; i++) {
+      const child = this.mesh.children[i];
+      const vel = this.childVelocities[i];
+      if (vel) {
+        child.position.x += vel.x * delta;
+        child.position.y += vel.y * delta;
+        child.position.z += vel.z * delta;
+      }
+      if (child instanceof THREE.Mesh) {
+        (child.material as THREE.MeshStandardMaterial).opacity =
+          Math.min((child.material as THREE.MeshStandardMaterial).opacity, fade);
+      }
+    }
+    this.coreLight.intensity *= 0.82;
+    return true;
+  }
+
+  private updateFading(delta: number): boolean {
+    this.stateTimer += delta;
+    if (this.stateTimer > FADE_DURATION) { this.alive = false; return true; }
+    const fade = Math.max(0, 1 - this.stateTimer / FADE_DURATION);
+    this.mesh.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        const mat = child.material as THREE.MeshStandardMaterial;
+        if (mat.transparent) mat.opacity = Math.min(mat.opacity, fade);
+      }
+    });
+    this.coreLight.intensity *= 0.8;
+    return true;
+  }
+
+  // ─── MOVEMENT ─────────────────────────────────────────────────────
   private applyMovementPattern(delta: number, t: number): void {
     switch (this.pattern) {
       case 'weave':
@@ -303,47 +384,44 @@ export class Creature {
     }
   }
 
-  private updateVisuals(t: number): void {
-    this.mesh.position.y = Math.sin(t * 3) * 0.02;
-    this.mesh.rotation.y = Math.sin(t * 1.5) * 0.05;
+  // ─── ANIMATIONS ───────────────────────────────────────────────────
+  private animateHuman(t: number): void {
+    // Running gait
+    const stride = Math.sin(t * 8);
+    this.mesh.position.y = Math.abs(Math.sin(t * 8)) * 0.06;
 
-    for (let i = 0; i < this.cloakPanels.length; i++) {
-      this.cloakPanels[i].rotation.x = Math.sin(t * 2 + i * 1.2) * 0.12;
+    if (this.arms[0]) this.arms[0].rotation.x = stride * 0.5;
+    if (this.arms[1]) this.arms[1].rotation.x = -stride * 0.5;
+    if (this.legs[0]) this.legs[0].rotation.x = -stride * 0.4;
+    if (this.legs[1]) this.legs[1].rotation.x = stride * 0.4;
+    if (this.head) this.head.rotation.y = Math.sin(t * 4) * 0.05;
+
+    this.coreLight.intensity = 0.4 + Math.sin(t * 3) * 0.1;
+  }
+
+  private animateZombie(t: number): void {
+    // Shambling lurch
+    this.mesh.position.y = Math.sin(t * 3) * 0.03;
+    this.mesh.position.x += Math.sin(t * 2.5) * 0.002;
+
+    if (this.arms[0]) this.arms[0].rotation.z = Math.sin(t * 1.5) * 0.12;
+    if (this.arms[1]) this.arms[1].rotation.z = -Math.sin(t * 1.5 + 0.5) * 0.12;
+    if (this.legs[0]) this.legs[0].rotation.x = Math.sin(t * 2.5) * 0.15;
+    if (this.legs[1]) this.legs[1].rotation.x = -Math.sin(t * 2.5) * 0.15;
+    if (this.head) this.head.rotation.z = Math.sin(t * 1.2) * 0.1;
+
+    for (let i = 0; i < this.ragPanels.length; i++) {
+      this.ragPanels[i].rotation.x = Math.sin(t * 2 + i * 1.3) * 0.2;
     }
 
-    for (let i = 0; i < this.darkMotes.length; i++) {
-      const phase = (i / this.darkMotes.length) * Math.PI * 2;
-      const r = 0.22 + Math.sin(t * 1.8 + i * 0.6) * 0.1;
-      this.darkMotes[i].position.set(
-        Math.cos(t * 1.2 + phase) * r,
-        0.5 + (i / this.darkMotes.length) * 1.0 + Math.sin(t * 2.5 + phase) * 0.08,
-        Math.sin(t * 1.2 + phase) * r
-      );
-    }
-
-    const flicker = Math.random() > 0.95 ? 0.25 : 1.0;
+    const flicker = Math.random() > 0.94 ? 0.2 : 1.0;
     this.coreLight.intensity = (0.5 + Math.sin(t * 4) * 0.15) * flicker;
     for (const mat of this.eyeMats) {
       mat.opacity = (0.85 + Math.sin(t * 6) * 0.1) * flicker;
     }
   }
 
-  hasReachedTarget(): boolean {
-    return this.mesh.position.z >= this.targetZ;
-  }
-
-  isAlive(): boolean {
-    return this.alive;
-  }
-
-  wasHandled(): boolean {
-    return this.handled;
-  }
-
-  setSpeed(speed: number): void {
-    this.speed = speed;
-  }
-
+  // ─── CLEANUP ──────────────────────────────────────────────────────
   dispose(): void {
     this.mesh.traverse((child) => {
       if (child instanceof THREE.Mesh) {

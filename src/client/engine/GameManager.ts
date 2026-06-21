@@ -118,7 +118,7 @@ export class GameManager {
     }
     if (!creature) return;
 
-    if (creature.type === 'threat') {
+    if (creature.type === 'zombie') {
       creature.disintegrate();
       this.state.score++;
       this.state.streak++;
@@ -126,7 +126,6 @@ export class GameManager {
       this.state.creaturesHandled++;
       this.currentSpeed = BASE_SPEED;
     } else {
-      // Clicked a friendly — flash light on them, streak penalty, creature stays
       creature.flashTorch();
       this.state.streak = 0;
     }
@@ -163,16 +162,14 @@ export class GameManager {
   }
 
   private spawnCreature(): void {
-    const type: CreatureType = Math.random() > 0.5 ? 'friendly' : 'threat';
+    const type: CreatureType = Math.random() > 0.5 ? 'human' : 'zombie';
     const lane = this.pickLane();
     const spawnZ = SPAWN_Z_MIN + Math.random() * (SPAWN_Z_MAX - SPAWN_Z_MIN);
 
-    // Friendlies run straight and faster (fleeing toward player)
-    // Threats use tricky movement patterns
-    const speed = type === 'friendly'
+    const speed = type === 'human'
       ? this.currentSpeed * FRIENDLY_SPEED_MULT
       : this.currentSpeed;
-    const pattern: MovementPattern = type === 'friendly'
+    const pattern: MovementPattern = type === 'human'
       ? 'straight'
       : this.pickPattern();
 
@@ -230,15 +227,13 @@ export class GameManager {
       creature.update(delta);
 
       if (creature.isAlive() && !creature.wasHandled() && creature.hasReachedTarget()) {
-        if (creature.type === 'threat') {
-          // Evil reached player — miss
+        if (creature.type === 'zombie') {
           this.state.misses++;
           this.state.consecutiveMisses++;
           this.state.streak = 0;
           this.currentSpeed += SPEED_PENALTY * this.state.consecutiveMisses;
           creature.reachPlayer();
         } else {
-          // Friendly reached safety — peaceful vanish
           creature.peacefulVanish();
         }
         this.state.creaturesHandled++;
