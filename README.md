@@ -77,6 +77,13 @@ Nightwatch runs as a Devvit Web interactive post with two entrypoints:
 1. **Splash screen** — Rendered inline in the Reddit feed. Shows the game title and a Play button.
 2. **Game scene** — Full Three.js 3D scene. Opens when the user clicks Play.
 
+Players act as a night watchman in a dark, foggy scene. Creatures approach from the darkness along a lantern-lit path:
+
+- **Lantern Spirits** (friendly) — Crystalline golden orbs with orbiting crystal shards, ethereal wings, and trailing light motes. Tap **Lantern** to let them in.
+- **Shadow Wraiths** (threats) — Tall hooded figures with skeletal arms, flickering red eyes, tattered cloaks, and swirling dark particles. Ring the **Bell** to ward them off.
+
+The 60-second timed session escalates in speed — consecutive misses make creatures approach faster, while correct actions maintain base speed. A streak system rewards consecutive correct calls.
+
 The client communicates with the Devvit server via API routes (`/api/*`). The server handles game state persistence, menu actions for moderators, and app lifecycle events.
 
 ## Contributing

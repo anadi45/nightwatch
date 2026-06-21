@@ -65,17 +65,13 @@ export class World {
     path.position.set(0, 0.01, -10);
     this.scene.add(path);
 
+    const postGeo = new THREE.CylinderGeometry(0.05, 0.05, 1.5, 5);
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x2a2a3a });
     for (let i = 0; i < 8; i++) {
       const side = i % 2 === 0 ? -1 : 1;
-      const postGeo = new THREE.CylinderGeometry(0.05, 0.05, 1.5, 6);
-      const postMat = new THREE.MeshStandardMaterial({ color: 0x2a2a3a });
       const post = new THREE.Mesh(postGeo, postMat);
       post.position.set(side * 2, 0.75, -i * 4);
       this.scene.add(post);
-
-      const lampLight = new THREE.PointLight(0x334466, 0.15, 5);
-      lampLight.position.set(side * 2, 1.5, -i * 4);
-      this.scene.add(lampLight);
     }
   }
 
