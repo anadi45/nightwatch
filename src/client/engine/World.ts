@@ -123,6 +123,11 @@ export class World {
     this.scene.add(fence);
   }
 
+  /** Swap procedural stand-ins for loaded Kenney kit models. */
+  installKitProps(assets: { gravestones: THREE.Group[]; crypt: THREE.Group }): void {
+    this.props.installKit(assets);
+  }
+
   update(time: number): void {
     this.lanternLight.intensity = 2.0 + Math.sin(time * 3) * 0.4;
     this.sky.update(time);

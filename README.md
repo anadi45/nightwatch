@@ -70,8 +70,9 @@ nightwatch/
 │   │   ├── game.*              # Three.js game scene + HUD + loader
 │   │   └── engine/
 │   │       ├── GameManager.ts  # Game loop, fireball throwing/collision, scoring
-│   │       ├── Creature.ts     # Ghost shader model, movement patterns, dissolve
+│   │       ├── Creature.ts     # Ghost (Kenney model), movement patterns, dissolve
 │   │       ├── Fireball.ts     # Thrown projectile with ember trail
+│   │       ├── assets.ts       # GLTF loading (Kenney Graveyard Kit, CC0)
 │   │       ├── Hands.ts        # First-person lantern + fire orb, flame shaders
 │   │       ├── World.ts        # Scene, camera, lighting, environment
 │   │       ├── PostFX.ts       # Bloom post-processing (selective via HDR colors)
@@ -126,6 +127,10 @@ git push origin feature/your-feature
 | `npm run deploy` | Type-check, lint, and upload to Devvit |
 | `npm run launch` | Deploy and publish to production |
 | `npm run login` | Authenticate CLI with Reddit |
+
+## Credits
+
+Ghost, gravestone, and crypt models from the [Kenney Graveyard Kit](https://kenney.nl/assets/graveyard-kit) (CC0).
 
 ## License
 

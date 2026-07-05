@@ -99,6 +99,7 @@ export class Props {
   private smokeClouds: THREE.Mesh[] = [];
   private smokeDrift: { x: number; speed: number; phase: number }[] = [];
   private fireflyMat: THREE.ShaderMaterial;
+  private proceduralStones: THREE.Mesh | null = null;
 
   constructor() {
     this.group = new THREE.Group();
@@ -155,7 +156,43 @@ export class Props {
     this.group.add(trees);
   }
 
-  // ─── GRAVESTONES (one merged geometry) ────────────────────────────
+  /**
+   * Replace the procedural gravestone slabs with Kenney kit models and
+   * add crypts. Kit materials are shared (never mutated), so clones are
+   * cheap and nothing extra needs disposing.
+   */
+  installKit(assets: { gravestones: THREE.Group[]; crypt: THREE.Group }): void {
+    if (this.proceduralStones) {
+      this.group.remove(this.proceduralStones);
+      this.proceduralStones.geometry.dispose();
+      (this.proceduralStones.material as THREE.Material).dispose();
+      this.proceduralStones = null;
+    }
+
+    for (let i = 0; i < 10; i++) {
+      const variant = assets.gravestones[i % assets.gravestones.length]!;
+      const stone = variant.clone(true);
+      const side = i % 2 === 0 ? -1 : 1;
+      stone.position.set(side * (2.6 + Math.random() * 1.1), -0.04, -2 - Math.random() * 26);
+      stone.rotation.y = (Math.random() - 0.5) * 0.9;
+      stone.rotation.z = (Math.random() - 0.5) * 0.16;
+      stone.scale.setScalar(1.15 + Math.random() * 0.35);
+      this.group.add(stone);
+    }
+
+    for (const [x, z, ry] of [
+      [-6.5, -16, 0.9],
+      [6.8, -24, -1.1],
+    ] as const) {
+      const crypt = assets.crypt.clone(true);
+      crypt.position.set(x, -0.04, z);
+      crypt.rotation.y = ry;
+      crypt.scale.setScalar(1.6);
+      this.group.add(crypt);
+    }
+  }
+
+  // ─── GRAVESTONES (procedural stand-ins until the kit loads) ───────
   private buildGravestones(): void {
     const geos: THREE.BufferGeometry[] = [];
     for (let i = 0; i < 9; i++) {
@@ -179,11 +216,11 @@ export class Props {
     }
     const merged = mergeGeometries(geos);
     for (const g of geos) g.dispose();
-    const stones = new THREE.Mesh(
+    this.proceduralStones = new THREE.Mesh(
       merged,
       new THREE.MeshStandardMaterial({ color: 0x2e2e3c, roughness: 0.9 })
     );
-    this.group.add(stones);
+    this.group.add(this.proceduralStones);
   }
 
   // ─── GROUND MIST ──────────────────────────────────────────────────
