@@ -51,6 +51,28 @@ export function makePathTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+function makeSmokeTexture(): THREE.CanvasTexture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  // overlapping soft blobs — billowing puff with ragged edges
+  const blobs: [number, number, number, number][] = [
+    [64, 70, 46, 0.55], [40, 56, 30, 0.5], [90, 58, 32, 0.5],
+    [56, 88, 28, 0.45], [82, 86, 26, 0.4], [64, 42, 26, 0.45],
+  ];
+  for (const [x, y, r, a] of blobs) {
+    const grad = ctx.createRadialGradient(x, y, 2, x, y, r);
+    grad.addColorStop(0, `rgba(58,62,82,${a})`);
+    grad.addColorStop(0.7, `rgba(46,50,68,${a * 0.5})`);
+    grad.addColorStop(1, 'rgba(40,44,60,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+  }
+  return new THREE.CanvasTexture(canvas);
+}
+
 function makeMistTexture(): THREE.CanvasTexture {
   const size = 128;
   const canvas = document.createElement('canvas');
@@ -74,6 +96,8 @@ function makeMistTexture(): THREE.CanvasTexture {
 export class Props {
   readonly group: THREE.Group;
   private mistPlanes: THREE.Mesh[] = [];
+  private smokeClouds: THREE.Mesh[] = [];
+  private smokeDrift: { x: number; speed: number; phase: number }[] = [];
   private fireflyMat: THREE.ShaderMaterial;
 
   constructor() {
@@ -81,6 +105,7 @@ export class Props {
     this.buildTrees();
     this.buildGravestones();
     this.buildMist();
+    this.buildSmoke();
     this.fireflyMat = this.buildFireflies();
   }
 
@@ -181,6 +206,35 @@ export class Props {
     }
   }
 
+  // ─── SMOKE CLOUDS (occluding — the difficulty mechanic) ───────────
+  // Unlike the additive ground mist, these use normal alpha blending
+  // and draw after ghosts/particles (renderOrder 3), so a ghost drifting
+  // behind one is genuinely obscured, eye glow included.
+  private buildSmoke(): void {
+    const tex = makeSmokeTexture();
+    const geo = new THREE.PlaneGeometry(3.4, 1.9);
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      opacity: 0.42,
+      depthWrite: false,
+    });
+    for (let i = 0; i < 4; i++) {
+      const cloud = new THREE.Mesh(geo, mat);
+      const z = -5.5 - i * 3;
+      cloud.position.set(0, 1.05 + (i % 2) * 0.25, z);
+      cloud.scale.setScalar(0.9 + Math.random() * 0.4);
+      cloud.renderOrder = 3;
+      this.smokeClouds.push(cloud);
+      this.smokeDrift.push({
+        x: (Math.random() - 0.5) * 2,
+        speed: 0.05 + Math.random() * 0.05,
+        phase: Math.random() * Math.PI * 2,
+      });
+      this.group.add(cloud);
+    }
+  }
+
   // ─── FIREFLIES (static Points, animated in vertex shader) ─────────
   private buildFireflies(): THREE.ShaderMaterial {
     const COUNT = 30;
@@ -239,6 +293,14 @@ export class Props {
     for (let i = 0; i < this.mistPlanes.length; i++) {
       const mist = this.mistPlanes[i]!;
       mist.position.x = (i - 1) * 1.5 + Math.sin(time * 0.07 + i * 2.1) * 1.6;
+    }
+    for (let i = 0; i < this.smokeClouds.length; i++) {
+      const cloud = this.smokeClouds[i]!;
+      const drift = this.smokeDrift[i]!;
+      // slow sweep across the lanes plus a gentle billow
+      cloud.position.x = drift.x + Math.sin(time * drift.speed + drift.phase) * 2.4;
+      cloud.position.y += Math.sin(time * 0.4 + drift.phase) * 0.0004;
+      cloud.rotation.z = Math.sin(time * 0.1 + drift.phase) * 0.06;
     }
   }
 }

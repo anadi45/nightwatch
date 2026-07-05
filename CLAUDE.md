@@ -53,7 +53,7 @@ The project follows Devvit's client/server split pattern:
   - `World.ts` — Three.js scene, camera (added to scene for hand children to render), FogExp2, ACES tone mapping, PostFX integration (render + resize), canvas-textured ground/path, merged decrepit fence (posts + rails, one draw call), flickering lantern light
   - `effects/Particles.ts` — pooled `ParticleSystem`: one THREE.Points, one draw call, additive soft-dot shader with manual FogExp2 fade, swap-with-last compaction. Instances: `fx` (world, 300, owned by GameManager) and torch embers (40, owned by Hands).
   - `environment/Sky.ts` — gradient dome (BackSide ShaderMaterial), ~200 twinkling star Points (vertex-shader animated), moon with procedural canvas maria. All `fog: false`.
-  - `environment/Props.ts` — dead trees (recursive branching merged into one geometry, black silhouette MeshBasicMaterial), gravestones (merged), drifting additive mist planes, firefly Points (fully vertex-shader animated), plus exported CanvasTexture makers for ground/path.
+  - `environment/Props.ts` — dead trees (recursive branching merged into one geometry, black silhouette MeshBasicMaterial), gravestones (merged), drifting additive mist planes, occluding smoke clouds (normal alpha blending + renderOrder 3 so they genuinely hide ghosts drifting behind them — a difficulty mechanic, not just decoration), firefly Points (fully vertex-shader animated), plus exported CanvasTexture makers for ground/path.
 
 - **`src/server/`** — Hono app (`index.ts`) mounting routes:
   - `/api/*` — game API endpoints (client fetches these)

@@ -24,7 +24,7 @@ export class Sky {
       uniforms: {
         uHorizon: { value: new THREE.Color(0x02020a) },
         uZenith: { value: new THREE.Color(0x0a0a20) },
-        uMoonDir: { value: new THREE.Vector3(-18, 25, -45).normalize() },
+        uMoonDir: { value: new THREE.Vector3(-8, 16, -46).normalize() },
       },
       vertexShader: /* glsl */ `
         varying vec3 vPos;
@@ -129,11 +129,31 @@ export class Sky {
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
 
+    // upper-left of the default view, well outside the play field —
+    // elevation must stay under ~19° or the camera's pitch hides it
+    const moonPos = new THREE.Vector3(-8, 16, -46);
+
+    // additive halo behind the disc — visible even without bloom
+    const haloMat = new THREE.MeshBasicMaterial({
+      color: 0x8890b8,
+      transparent: true,
+      opacity: 0.35,
+      blending: THREE.AdditiveBlending,
+      fog: false,
+      depthWrite: false,
+    });
+    const halo = new THREE.Mesh(new THREE.CircleGeometry(9, 24), haloMat);
+    halo.position.copy(moonPos);
+    halo.lookAt(0, 2.5, 6);
+    halo.renderOrder = -1;
+    this.group.add(halo);
+
     const mat = new THREE.MeshBasicMaterial({ map: tex, fog: false });
-    mat.color.multiplyScalar(1.6); // gentle bloom halo
-    const moon = new THREE.Mesh(new THREE.CircleGeometry(3, 24), mat);
-    moon.position.set(-18, 25, -45);
+    mat.color.multiplyScalar(1.8); // blooms
+    const moon = new THREE.Mesh(new THREE.CircleGeometry(5, 24), mat);
+    moon.position.copy(moonPos);
     moon.lookAt(0, 2.5, 6);
+    moon.translateZ(0.5); // sit in front of the halo
     moon.renderOrder = -1;
     this.group.add(moon);
   }
