@@ -10,8 +10,8 @@ This project is an entry for Reddit's [**Games with a Hook**](https://redditgame
 
 You are the night watchman. Survivors flee toward your lantern light from the darkness — but ghosts haunt the shadows behind them. Humans run straight toward you for safety. Ghosts float from the darkness using unpredictable paths.
 
-- **Humans** — Upright, running, blue eyes. Let them reach you safely.
-- **Ghosts** — Translucent, floating, red eyes. Tap them to flash your torch and banish them.
+- **Humans** — Hooded survivors carrying a warm candle glow, running upright, blue eyes. Let them reach you safely.
+- **Ghosts** — Translucent specters with a cold spectral rim, floating, red eyes. Tap them to flash your torch and banish them.
 
 Torch a survivor by mistake and your streak resets. Let a ghost reach you and things get worse — they speed up. As the 60-second watch progresses, spawn rates increase and ghost movement gets trickier.
 
@@ -71,9 +71,12 @@ nightwatch/
 │   │   ├── game.*              # Three.js game scene + HUD + loader
 │   │   └── engine/
 │   │       ├── GameManager.ts  # Game loop, raycasting input, scoring
-│   │       ├── Creature.ts     # Unified creature model, movement, effects
-│   │       ├── Hands.ts        # First-person lantern + torch
-│   │       └── World.ts        # Scene, camera, lighting, environment
+│   │       ├── Creature.ts     # Survivor rig + ghost shader, movement, effects
+│   │       ├── Hands.ts        # First-person lantern + torch, flame shaders, embers
+│   │       ├── World.ts        # Scene, camera, lighting, environment
+│   │       ├── PostFX.ts       # Bloom post-processing (selective via HDR colors)
+│   │       ├── effects/        # Pooled particle system
+│   │       └── environment/    # Night sky, moon, stars, trees, gravestones, mist
 │   ├── server/                 # Backend — runs on Devvit servers
 │   │   ├── index.ts            # Hono app, mounts all routes
 │   │   ├── core/               # Server utilities
@@ -96,7 +99,7 @@ The player holds a glowing lantern (left hand) and a torch (right hand) in first
 
 **Humans** run straight toward the player at high speed, fleeing the haunted darkness. They vanish peacefully on arrival. **Ghosts** float toward the player as translucent specters with trailing wisps, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
 
-Tap on a ghost to flash your torch and watch it disintegrate into scattered pieces. But flash a survivor by mistake and your streak resets. The challenge escalates: consecutive misses make ghosts faster, spawn intervals tighten, and movement patterns become trickier.
+Tap on a ghost to flash your torch and watch it dissolve into rising embers of light. But flash a survivor by mistake and your streak resets. The challenge escalates: consecutive misses make ghosts faster, spawn intervals tighten, and movement patterns become trickier.
 
 The client communicates with the Devvit server via API routes (`/api/*`). The server handles game state persistence, menu actions for moderators, and app lifecycle events.
 

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { World } from './World.js';
 import { Creature, CreatureType, MovementPattern } from './Creature.js';
 import { Hands } from './Hands.js';
+import { ParticleSystem } from './effects/Particles.js';
 
 export type GamePhase = 'ready' | 'playing' | 'ended';
 
@@ -34,6 +35,7 @@ const LANES = [-2.2, -1.1, 0, 1.1, 2.2];
 export class GameManager {
   private world: World;
   private hands: Hands;
+  private fx: ParticleSystem;
   private callbacks: GameCallbacks;
   private state: GameState;
   private creatures: Creature[] = [];
@@ -51,6 +53,8 @@ export class GameManager {
   constructor(container: HTMLElement, callbacks: GameCallbacks) {
     this.world = new World(container);
     this.hands = new Hands(this.world.camera);
+    this.fx = new ParticleSystem(300, 0.06);
+    this.world.scene.add(this.fx.points);
     this.callbacks = callbacks;
     this.state = this.freshState();
     this.lastTime = performance.now();
@@ -180,6 +184,7 @@ export class GameManager {
       targetZ: TARGET_Z,
       spawnX: LANES[lane],
       pattern,
+      fx: this.fx,
     });
 
     this.creatures.push(creature);
@@ -194,7 +199,8 @@ export class GameManager {
     this.lastTime = now;
 
     this.hands.update(delta, now * 0.001);
-    this.world.update();
+    this.world.update(now * 0.001);
+    this.fx.update(delta);
 
     if (this.state.phase === 'playing') {
       this.state.timeRemaining -= delta;

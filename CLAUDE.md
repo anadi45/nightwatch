@@ -47,13 +47,17 @@ The project follows Devvit's client/server split pattern:
   - Splash→Game navigation uses `requestExpandedMode(event, 'game')` from `@devvit/web/client`
 
 - **`src/client/engine/`** — Game engine modules:
-  - `GameManager.ts` — game loop, raycasting for tap-on-creature input, scoring, spawn timing, state transitions. Render loop runs from construction (scene visible behind ready/end overlays).
+  - `GameManager.ts` — game loop, raycasting for tap-on-creature input, scoring, spawn timing, state transitions. Render loop runs from construction (scene visible behind ready/end overlays). Owns the shared `fx` ParticleSystem and injects it into creatures.
+  - `PostFX.ts` — EffectComposer + UnrealBloomPass + OutputPass. Selective bloom via HDR color boosting: emissive materials multiply their color above 1.0 and the bloom threshold is 1.0, so only eyes/flames/moon/ghost-rims bloom. Custom HalfFloat MSAA render target (WebGL2); falls back to direct rendering on WebGL1 (`postfx.enabled === false`). ACES tone mapping is set on the renderer in World.
   - `Creature.ts` — two creature types built from Three.js primitives:
-    - **Human** (survivor): SphereGeometry head with hair, BoxGeometry torso in warm tunic, CylinderGeometry arms/legs with running gait animation, blue eyes
-    - **Ghost** (threat): translucent LatheGeometry body tapering to wispy tail, floating SphereGeometry head, trailing arm wisps, tail tendrils, additive glow aura, red flickering eyes, ethereal hover animation
-    - Shared: movement patterns (straight/weave/zigzag/flank), state machine (approaching→disintegrating/fading), invisible hit sphere for forgiving tap targets, torch flash effect (PointLight burst on tap)
-  - `Hands.ts` — first-person hands attached to the camera. Left hand holds a glowing lantern (IcosahedronGeometry core, additive glow layers, strong PointLight). Right hand holds a torch (thrust animation on tap). Responsive positioning based on camera FOV + aspect ratio for mobile support. All materials self-lit (MeshBasicMaterial).
-  - `World.ts` — Three.js scene, camera (added to scene for hand children to render), FogExp2, fence-post path, flickering lantern light
+    - **Human** (survivor): jointed capsule rig — thigh/shin and shoulder/elbow pivot groups for a knee-bending run cycle, hooded cloak (cone hood + lathe cape) with warm emissive, carried candle with warm gold glow (the "friendly" marker), blue bloom-boosted eyes
+    - **Ghost** (threat): custom fresnel-rim ShaderMaterial (spectral green edge glow, vertex waver, per-instance `uTime`/`uOpacity`/`uDissolve` uniforms), fog done manually in-shader as fade-to-black, wisp particle trail, additive aura, red flickering bloom-boosted eyes. Dies by dissolving into rising particles (`uDissolve` + fx burst), not chunk scatter.
+    - Shared: movement patterns (straight/weave/zigzag/flank), state machine (approaching→disintegrating/fading), invisible hit sphere for forgiving tap targets, torch flash effect (short-lived PointLight burst on tap). Geometries and never-mutated materials are module-level statics shared across all creatures; anything animated (shader clones, eye materials) is a per-instance clone tracked in `ownedMaterials` and disposed in `dispose()`. **No per-creature PointLights** — bloom halos replace them.
+  - `Hands.ts` — first-person hands attached to the camera. Left hand holds a caged lantern (crystal core, cage bars/rings, shader flame). Right hand holds a torch with a shader-driven flame cone (vertex wag scaled by uv.y, white-hot base that blooms) and a rising-ember ParticleSystem parented to the torch group so embers follow the thrust. Figure-8 idle sway. Responsive positioning based on camera FOV + aspect ratio for mobile support.
+  - `World.ts` — Three.js scene, camera (added to scene for hand children to render), FogExp2, ACES tone mapping, PostFX integration (render + resize), canvas-textured ground/path, merged decrepit fence (posts + rails, one draw call), flickering lantern light
+  - `effects/Particles.ts` — pooled `ParticleSystem`: one THREE.Points, one draw call, additive soft-dot shader with manual FogExp2 fade, swap-with-last compaction. Instances: `fx` (world, 300, owned by GameManager) and torch embers (40, owned by Hands).
+  - `environment/Sky.ts` — gradient dome (BackSide ShaderMaterial), ~200 twinkling star Points (vertex-shader animated), moon with procedural canvas maria. All `fog: false`.
+  - `environment/Props.ts` — dead trees (recursive branching merged into one geometry, black silhouette MeshBasicMaterial), gravestones (merged), drifting additive mist planes, firefly Points (fully vertex-shader animated), plus exported CanvasTexture makers for ground/path.
 
 - **`src/server/`** — Hono app (`index.ts`) mounting routes:
   - `/api/*` — game API endpoints (client fetches these)
@@ -83,7 +87,10 @@ Client and server have separate tsconfig files because `@devvit/web` uses condit
 - Camera must be added to scene (`scene.add(camera)`) for camera-child objects (hands) to render
 - Keep draw calls low: share geometry/material instances, prefer `MeshBasicMaterial` for small/unlit elements and self-lit objects (hands), only use `transparent: true` on materials that actually need sub-1.0 opacity or additive blending
 - Avoid per-frame `traverse()` — store direct references to materials/meshes that need animation
-- Minimize `PointLight` count (each light multiplies fragment shader cost); creature flash lights are short-lived and cleaned up
+- Minimize `PointLight` count (each light multiplies fragment shader cost). Budget: 3 persistent (world lantern, hands lantern, torch) + short-lived creature flash lights. Creatures must NOT carry their own PointLights — bloom-boosted glow materials do that job.
+- Shared static geometry/materials rule: module-level shared resources are **never mutated and never disposed by instances**; anything whose opacity/color animates must be a per-instance clone tracked and disposed by its owner. Cloned ShaderMaterials share the compiled program, so cloning is cheap.
+- Bloom is half-CSS-resolution and DPR-independent: `composer.setSize` multiplies by pixelRatio internally, so `bloomPass.setSize(cssW, cssH)` must be re-called *after* it (composer.setSize overwrites pass sizes)
+- Particle effects go through the pooled `ParticleSystem` (one draw call per system) — never one mesh per particle
 - Dispose all Three.js geometries and materials when removing meshes from the scene to prevent memory leaks
 - Responsive hand positioning: calculate from camera FOV + aspect ratio, not hardcoded pixel values
 - The Vite build uses `@devvit/start/vite` plugin which handles the client/server split automatically
@@ -97,3 +104,7 @@ Client and server have separate tsconfig files because `@devvit/web` uses condit
 - Never use `Object.assign` with `position: new THREE.Vector3()` on Three.js objects — it replaces the internal position property and breaks matrix updates. Always use `mesh.position.set(x, y, z)`.
 - Raycaster needs `intersectObjects(targets, true)` (recursive) since creatures are Groups with child meshes. Walk the parent chain from the hit object to find the creature Group.
 - Creatures need `material.colorWrite = false; material.depthWrite = false` on invisible hit-area meshes so they're raycastable but don't render.
+- Additive materials must never enable `depthWrite`, and custom ShaderMaterials get no scene fog — the ghost/particle shaders implement FogExp2 manually as a fade-to-black (`exp(-pow(density * viewDepth, 2))`); the density constant must stay in sync with World's fog (0.06).
+- Custom ShaderMaterials bypass per-material tone mapping/color space — author output in linear and let OutputPass convert the composed frame; do not include `colorspace_fragment`.
+- Sky/moon/star materials need `fog: false` or FogExp2 erases them at 50+ units.
+- `npm run lint` currently fails on Windows for two pre-existing reasons: the glob is single-quoted in package.json (cmd passes quotes literally) and `eslint.config.js` imports `@eslint/js` which is not in devDependencies.

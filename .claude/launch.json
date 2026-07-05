@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lexi-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "C:\\Users\\Ranjeet\\Desktop\\lexi\\lexi-ai-web"],
+      "port": 5173
+    }
+  ]
+}
