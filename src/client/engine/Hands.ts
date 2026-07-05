@@ -59,6 +59,8 @@ export class Hands {
   private torchLight: THREE.PointLight;
   private embers: ParticleSystem;
   private emberTimer = 0;
+  private heldOrb!: THREE.Group;
+  private orbRegrow = 1;
 
   private lanternRestX = 0;
   private torchRestX = 0;
@@ -191,6 +193,8 @@ export class Hands {
     return group;
   }
 
+  // Right hand: open palm cradling a conjured fire orb. The orb is
+  // "thrown" on tap (scales to zero) and regrows over ~0.35s.
   private buildTorch(): THREE.Group {
     const group = new THREE.Group();
     const armMat = new THREE.MeshBasicMaterial({ color: 0x2a1e14 });
@@ -199,54 +203,50 @@ export class Hands {
     arm.position.set(0, -0.04, 0);
     group.add(arm);
 
-    const fist = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.06, 0.06), armMat);
+    const fist = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.05, 0.07), armMat);
     fist.position.set(0, 0.11, 0);
     group.add(fist);
 
-    const shaft = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.015, 0.018, 0.32, 5),
-      new THREE.MeshBasicMaterial({ color: 0x3a2510 })
-    );
-    shaft.position.set(0, 0.22, 0);
-    group.add(shaft);
+    this.heldOrb = new THREE.Group();
+    this.heldOrb.position.set(0, 0.21, 0);
 
-    const wrap = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.028, 0.022, 0.06, 5),
-      new THREE.MeshBasicMaterial({ color: 0x2a1a0a })
+    const core = new THREE.Mesh(
+      new THREE.SphereGeometry(0.045, 8, 8),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffaa33).multiplyScalar(2.2) })
     );
-    wrap.position.set(0, 0.36, 0);
-    group.add(wrap);
+    this.heldOrb.add(core);
 
     const flame = new THREE.Mesh(
-      new THREE.ConeGeometry(0.045, 0.16, 8, 6, true),
+      new THREE.ConeGeometry(0.045, 0.14, 8, 6, true),
       this.torchFlameMat
     );
-    flame.position.set(0, 0.46, 0);
-    group.add(flame);
+    flame.position.y = 0.09;
+    this.heldOrb.add(flame);
 
     const glow = new THREE.Mesh(
-      new THREE.SphereGeometry(0.065, 4, 4),
+      new THREE.SphereGeometry(0.085, 6, 6),
       new THREE.MeshBasicMaterial({
         color: 0xffaa33,
         transparent: true,
-        opacity: 0.18,
+        opacity: 0.2,
         blending: THREE.AdditiveBlending,
       })
     );
-    glow.position.set(0, 0.44, 0);
-    group.add(glow);
+    this.heldOrb.add(glow);
+    group.add(this.heldOrb);
 
-    // rising embers, in torch-local space so they follow the thrust
+    // rising embers, in hand-local space so they follow the thrust
     group.add(this.embers.points);
 
-    this.torchLight.position.set(0, 0.45, 0);
+    this.torchLight.position.set(0, 0.22, 0);
     group.add(this.torchLight);
 
     return group;
   }
 
-  thrustTorch(): void {
+  throwFireball(): void {
     this.torchAnimTime = 0.001;
+    this.orbRegrow = 0;
   }
 
   private spawnEmbers(delta: number, rateMult: number): void {
@@ -254,7 +254,7 @@ export class Hands {
     if (this.emberTimer > 0) return;
     this.emberTimer = 0.25 / rateMult;
     this.embers.spawn(
-      new THREE.Vector3((Math.random() - 0.5) * 0.05, 0.45, (Math.random() - 0.5) * 0.05),
+      new THREE.Vector3((Math.random() - 0.5) * 0.05, 0.24, (Math.random() - 0.5) * 0.05),
       {
         color: EMBER_COLOR,
         velocity: new THREE.Vector3(0, 0.22, 0),
@@ -279,6 +279,11 @@ export class Hands {
     this.lanternFlameMat.uniforms.uTime!.value = time;
     this.embers.update(delta);
 
+    // orb regrows after a throw
+    this.orbRegrow = Math.min(1, this.orbRegrow + delta / 0.35);
+    const orbScale = this.orbRegrow * this.orbRegrow * (3 - 2 * this.orbRegrow);
+    this.heldOrb.scale.setScalar(Math.max(0.001, orbScale));
+
     this.lanternGroup.position.x = this.lanternRestX + swayX;
     this.lanternGroup.position.y = this.lanternRestY + idleBob + swayY;
     this.lanternGroup.rotation.z = 0.06 + Math.sin(time * 0.7) * 0.01;
@@ -295,7 +300,7 @@ export class Hands {
         this.torchGroup.position.z = this.torchRestZ - e * 0.08;
         this.torchGroup.rotation.x = this.torchRestRotX - e * 0.3;
         this.torchFlameMat.uniforms.uIntensity!.value = 1 + e * 0.9;
-        this.torchLight.intensity = 0.8 + e * 1.5;
+        this.torchLight.intensity = (0.8 + e * 1.5) * (0.3 + orbScale * 0.7);
         this.spawnEmbers(delta, 4);
         return;
       }
@@ -306,8 +311,8 @@ export class Hands {
     this.torchGroup.position.z = this.torchRestZ;
     this.torchGroup.rotation.x = this.torchRestRotX;
     this.torchFlameMat.uniforms.uIntensity!.value = 1;
-    this.torchLight.intensity = 0.8 + Math.sin(time * 8) * 0.15;
-    this.spawnEmbers(delta, 1);
+    this.torchLight.intensity = (0.8 + Math.sin(time * 8) * 0.15) * (0.3 + orbScale * 0.7);
+    if (orbScale > 0.5) this.spawnEmbers(delta, 1);
   }
 
   dispose(): void {

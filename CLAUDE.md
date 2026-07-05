@@ -4,19 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Nightwatch is a first-person Three.js game built for Reddit's Devvit Web platform for the "Games with a Hook" hackathon. It runs as an interactive post inside Reddit feeds. Players hold a lantern and torch in first person. Survivors and ghosts approach from the dark. Players must tap on **ghosts** to flash their torch and banish them, while letting **human survivors** reach safety. The core challenge is quick identification under time pressure.
+Nightwatch is a first-person Three.js game built for Reddit's Devvit Web platform for the "Games with a Hook" hackathon. It runs as an interactive post inside Reddit feeds. The player holds a lantern in the left hand and conjures fireballs in the right. Ghosts drift out of the dark toward the player; every tap hurls a fireball toward that point. Hits build an unbroken streak — any miss resets it. The core hook is accuracy under pressure: spamming fireballs is punished.
 
 ## Gameplay
 
 - **60-second timed sessions** with escalating difficulty
-- **Humans** (blue eyes, upright, running gait) flee straight toward the player at 1.5x speed
-- **Ghosts** (red eyes, translucent, floating, trailing wisps) use tricky movement patterns (weave, zigzag, flank) at base speed
-- **Tap on a creature** to flash your torch light on it:
-  - Ghost → disintegrates (score +1, streak continues)
-  - Human → streak resets (survivor stays, keeps approaching)
-- **Ghost reaching the player** = miss (streak breaks, speed penalty)
-- **Human reaching the player** = peaceful vanish (neutral, they made it to safety)
-- Consecutive misses make evil creatures approach faster
+- **Ghosts** (red eyes, translucent, floating, trailing wisps) use movement patterns (straight/weave/zigzag/flank) that get trickier as time passes
+- **Tap anywhere** to throw a fireball toward the tap point (aim assist: if the tap ray crosses a ghost, the fireball aims at that exact point — but the ghost can drift out of its path in flight)
+- **Fireball hits a ghost** → ghost dissolves (score +1, streak +1)
+- **Fireball misses** (flies past, hits the ground, burns out) → streak resets, counts as a miss
+- **Ghost reaching the player** → miss, streak resets, speed penalty
+- Consecutive ghost-reaches make ghosts approach faster; a hit resets the speed to base
 
 ## Tech Stack
 
@@ -47,13 +45,11 @@ The project follows Devvit's client/server split pattern:
   - Splash→Game navigation uses `requestExpandedMode(event, 'game')` from `@devvit/web/client`
 
 - **`src/client/engine/`** — Game engine modules:
-  - `GameManager.ts` — game loop, raycasting for tap-on-creature input, scoring, spawn timing, state transitions. Render loop runs from construction (scene visible behind ready/end overlays). Owns the shared `fx` ParticleSystem and injects it into creatures.
+  - `GameManager.ts` — game loop, fireball throwing (tap → raycast for aim point → spawn projectile), per-frame sphere collision between fireballs and ghosts, scoring/streak, spawn timing, state transitions. Render loop runs from construction (scene visible behind ready/end overlays). Owns the shared `fx` ParticleSystem and injects it into creatures and fireballs.
   - `PostFX.ts` — EffectComposer + UnrealBloomPass + OutputPass. Selective bloom via HDR color boosting: emissive materials multiply their color above 1.0 and the bloom threshold is 1.0, so only eyes/flames/moon/ghost-rims bloom. Custom HalfFloat MSAA render target (WebGL2); falls back to direct rendering on WebGL1 (`postfx.enabled === false`). ACES tone mapping is set on the renderer in World.
-  - `Creature.ts` — two creature types built from Three.js primitives:
-    - **Human** (survivor): jointed capsule rig — thigh/shin and shoulder/elbow pivot groups for a knee-bending run cycle, hooded cloak (cone hood + lathe cape) with warm emissive, carried candle with warm gold glow (the "friendly" marker), blue bloom-boosted eyes
-    - **Ghost** (threat): custom fresnel-rim ShaderMaterial (spectral green edge glow, vertex waver, per-instance `uTime`/`uOpacity`/`uDissolve` uniforms), fog done manually in-shader as fade-to-black, wisp particle trail, additive aura, red flickering bloom-boosted eyes. Dies by dissolving into rising particles (`uDissolve` + fx burst), not chunk scatter.
-    - Shared: movement patterns (straight/weave/zigzag/flank), state machine (approaching→disintegrating/fading), invisible hit sphere for forgiving tap targets, torch flash effect (short-lived PointLight burst on tap). Geometries and never-mutated materials are module-level statics shared across all creatures; anything animated (shader clones, eye materials) is a per-instance clone tracked in `ownedMaterials` and disposed in `dispose()`. **No per-creature PointLights** — bloom halos replace them.
-  - `Hands.ts` — first-person hands attached to the camera. Left hand holds a caged lantern (crystal core, cage bars/rings, shader flame). Right hand holds a torch with a shader-driven flame cone (vertex wag scaled by uv.y, white-hot base that blooms) and a rising-ember ParticleSystem parented to the torch group so embers follow the thrust. Figure-8 idle sway. Responsive positioning based on camera FOV + aspect ratio for mobile support.
+  - `Creature.ts` — the ghost: custom fresnel-rim ShaderMaterial (spectral green edge glow, vertex waver, per-instance `uTime`/`uOpacity`/`uDissolve` uniforms), fog done manually in-shader as fade-to-black, wisp particle trail, additive aura, red flickering bloom-boosted eyes. Movement patterns (straight/weave/zigzag/flank), state machine (approaching→disintegrating/fading), invisible hit sphere used for tap-time aim assist, `getHitCenter()` for projectile collision. Dies by dissolving into rising particles (`uDissolve` + fx burst) with a short-lived orange impact PointLight. Geometries and never-mutated materials are module-level statics shared across all creatures; anything animated (shader clone, eye materials) is a per-instance clone tracked in `ownedMaterials` and disposed in `dispose()`. **No persistent per-creature PointLights** — bloom halos replace them.
+  - `Fireball.ts` — thrown projectile: HDR-boosted core + additive glow (bloom does the fire halo, no PointLight), ember trail + hit/fizzle bursts through the shared fx system, straight-line flight along the aim ray. Expires past z −24, below ground, or after 1.8s. All resources are shared statics; nothing to dispose per instance.
+  - `Hands.ts` — first-person hands attached to the camera. Left hand holds a caged lantern (crystal core, cage bars/rings, shader flame). Right hand cradles a conjured fire orb (HDR core + shader flame cone + embers); `throwFireball()` plays the thrust animation and the orb scales to zero and regrows over ~0.35s. Figure-8 idle sway. Responsive positioning based on camera FOV + aspect ratio for mobile support.
   - `World.ts` — Three.js scene, camera (added to scene for hand children to render), FogExp2, ACES tone mapping, PostFX integration (render + resize), canvas-textured ground/path, merged decrepit fence (posts + rails, one draw call), flickering lantern light
   - `effects/Particles.ts` — pooled `ParticleSystem`: one THREE.Points, one draw call, additive soft-dot shader with manual FogExp2 fade, swap-with-last compaction. Instances: `fx` (world, 300, owned by GameManager) and torch embers (40, owned by Hands).
   - `environment/Sky.ts` — gradient dome (BackSide ShaderMaterial), ~200 twinkling star Points (vertex-shader animated), moon with procedural canvas maria. All `fog: false`.
@@ -87,7 +83,7 @@ Client and server have separate tsconfig files because `@devvit/web` uses condit
 - Camera must be added to scene (`scene.add(camera)`) for camera-child objects (hands) to render
 - Keep draw calls low: share geometry/material instances, prefer `MeshBasicMaterial` for small/unlit elements and self-lit objects (hands), only use `transparent: true` on materials that actually need sub-1.0 opacity or additive blending
 - Avoid per-frame `traverse()` — store direct references to materials/meshes that need animation
-- Minimize `PointLight` count (each light multiplies fragment shader cost). Budget: 3 persistent (world lantern, hands lantern, torch) + short-lived creature flash lights. Creatures must NOT carry their own PointLights — bloom-boosted glow materials do that job.
+- Minimize `PointLight` count (each light multiplies fragment shader cost). Budget: 3 persistent (world lantern, hands lantern, held fire orb) + short-lived ghost impact lights. Creatures and fireballs must NOT carry persistent PointLights — bloom-boosted glow materials do that job.
 - Shared static geometry/materials rule: module-level shared resources are **never mutated and never disposed by instances**; anything whose opacity/color animates must be a per-instance clone tracked and disposed by its owner. Cloned ShaderMaterials share the compiled program, so cloning is cheap.
 - Bloom is half-CSS-resolution and DPR-independent: `composer.setSize` multiplies by pixelRatio internally, so `bloomPass.setSize(cssW, cssH)` must be re-called *after* it (composer.setSize overwrites pass sizes)
 - Particle effects go through the pooled `ParticleSystem` (one draw call per system) — never one mesh per particle

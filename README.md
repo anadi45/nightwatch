@@ -8,14 +8,13 @@ This project is an entry for Reddit's [**Games with a Hook**](https://redditgame
 
 ## The Game
 
-You are the night watchman. Survivors flee toward your lantern light from the darkness — but ghosts haunt the shadows behind them. Humans run straight toward you for safety. Ghosts float from the darkness using unpredictable paths.
+You are the night watchman. Ghosts rise from the darkness and drift toward your lantern light on unpredictable paths — weaving, zigzagging, flanking from the sides.
 
-- **Humans** — Hooded survivors carrying a warm candle glow, running upright, blue eyes. Let them reach you safely.
-- **Ghosts** — Translucent specters with a cold spectral rim, floating, red eyes. Tap them to flash your torch and banish them.
+Your only weapon is fire. **Tap anywhere to hurl a fireball** toward that point. Hit a ghost and it dissolves into embers — your streak climbs. Miss, and your streak shatters. Let a ghost reach you and things get worse — they speed up.
 
-Torch a survivor by mistake and your streak resets. Let a ghost reach you and things get worse — they speed up. As the 60-second watch progresses, spawn rates increase and ghost movement gets trickier.
+As the 60-second watch progresses, spawn rates increase and ghost movement gets trickier. Every throw counts: spraying fireballs into the dark is the fastest way to lose your streak.
 
-One lantern. One torch. How many can you save?
+One lantern. One flame. How long can you keep the streak alive?
 
 ## Tech Stack
 
@@ -70,9 +69,10 @@ nightwatch/
 │   │   ├── splash.*            # Title screen (inline in feed)
 │   │   ├── game.*              # Three.js game scene + HUD + loader
 │   │   └── engine/
-│   │       ├── GameManager.ts  # Game loop, raycasting input, scoring
-│   │       ├── Creature.ts     # Survivor rig + ghost shader, movement, effects
-│   │       ├── Hands.ts        # First-person lantern + torch, flame shaders, embers
+│   │       ├── GameManager.ts  # Game loop, fireball throwing/collision, scoring
+│   │       ├── Creature.ts     # Ghost shader model, movement patterns, dissolve
+│   │       ├── Fireball.ts     # Thrown projectile with ember trail
+│   │       ├── Hands.ts        # First-person lantern + fire orb, flame shaders
 │   │       ├── World.ts        # Scene, camera, lighting, environment
 │   │       ├── PostFX.ts       # Bloom post-processing (selective via HDR colors)
 │   │       ├── effects/        # Pooled particle system
@@ -95,11 +95,9 @@ Nightwatch runs as a Devvit Web interactive post with two entrypoints:
 1. **Splash screen** — Rendered inline in the Reddit feed. Shows the game title and a Play button.
 2. **Game scene** — Full Three.js 3D scene in first person. Opens when the user clicks Play.
 
-The player holds a glowing lantern (left hand) and a torch (right hand) in first-person view. Survivors and ghosts approach along a dark, foggy path.
+The player holds a glowing lantern (left hand) and cradles a conjured fireball (right hand) in first-person view. Ghosts approach along a dark, foggy graveyard path as translucent specters with trailing wisps, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
 
-**Humans** run straight toward the player at high speed, fleeing the haunted darkness. They vanish peacefully on arrival. **Ghosts** float toward the player as translucent specters with trailing wisps, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
-
-Tap on a ghost to flash your torch and watch it dissolve into rising embers of light. But flash a survivor by mistake and your streak resets. The challenge escalates: consecutive misses make ghosts faster, spawn intervals tighten, and movement patterns become trickier.
+Tap to throw the fireball toward that point. It flies straight, so a weaving ghost can drift out of its path — lead your shots. A hit dissolves the ghost into rising embers and builds your streak; a miss (or a ghost reaching you) breaks it. The challenge escalates: ghosts that reach you make the rest faster, spawn intervals tighten, and movement patterns become trickier.
 
 The client communicates with the Devvit server via API routes (`/api/*`). The server handles game state persistence, menu actions for moderators, and app lifecycle events.
 

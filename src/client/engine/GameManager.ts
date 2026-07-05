@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { World } from './World.js';
-import { Creature, CreatureType, MovementPattern } from './Creature.js';
+import { Creature, MovementPattern } from './Creature.js';
 import { Hands } from './Hands.js';
+import { Fireball } from './Fireball.js';
 import { ParticleSystem } from './effects/Particles.js';
 
 export type GamePhase = 'ready' | 'playing' | 'ended';
@@ -24,11 +25,11 @@ interface GameCallbacks {
 
 const WATCH_DURATION = 60;
 const BASE_SPEED = 1.4;
-const FRIENDLY_SPEED_MULT = 1.5;
 const SPAWN_Z_MIN = -18;
 const SPAWN_Z_MAX = -12;
 const TARGET_Z = 4;
 const SPEED_PENALTY = 0.15;
+const FIREBALL_HIT_RADIUS = 0.75;
 
 const LANES = [-2.2, -1.1, 0, 1.1, 2.2];
 
@@ -39,6 +40,8 @@ export class GameManager {
   private callbacks: GameCallbacks;
   private state: GameState;
   private creatures: Creature[] = [];
+  private fireballs: Fireball[] = [];
+  private hitCenter = new THREE.Vector3();
   private spawnTimer = 0;
   private spawnInterval = 2;
   private lastTime = 0;
@@ -80,6 +83,8 @@ export class GameManager {
       c.dispose();
     });
     this.creatures = [];
+    this.fireballs.forEach((fb) => this.world.scene.remove(fb.mesh));
+    this.fireballs = [];
     this.currentSpeed = BASE_SPEED;
     this.spawnTimer = 0;
     this.spawnInterval = 2;
@@ -94,47 +99,74 @@ export class GameManager {
   handleTap(ndcX: number, ndcY: number): void {
     if (this.state.phase !== 'playing') return;
 
-    this.hands.thrustTorch();
+    this.hands.throwFireball();
 
     this.pointer.set(ndcX, ndcY);
     this.raycaster.setFromCamera(this.pointer, this.world.camera);
 
-    // Build map of creature groups for hit detection
-    const groupToCreature = new Map<THREE.Object3D, Creature>();
+    // Aim assist: if the tap ray crosses a ghost right now, aim at that
+    // exact point — the ghost can still drift out of the way in flight.
     const targets: THREE.Object3D[] = [];
     for (const c of this.creatures) {
-      if (c.isApproaching()) {
-        groupToCreature.set(c.mesh, c);
-        targets.push(c.mesh);
+      if (c.isApproaching()) targets.push(c.mesh);
+    }
+    const intersects = this.raycaster.intersectObjects(targets, true);
+    const aim =
+      intersects.length > 0
+        ? intersects[0].point
+        : this.raycaster.ray.at(20, new THREE.Vector3());
+
+    // launch from beside the right hand
+    const start = this.world.camera.localToWorld(new THREE.Vector3(0.28, -0.18, -0.45));
+    const fireball = new Fireball(start, aim, this.fx);
+    this.fireballs.push(fireball);
+    this.world.scene.add(fireball.mesh);
+  }
+
+  private updateFireballs(delta: number, scoring: boolean): void {
+    if (this.fireballs.length === 0) return;
+    let stateChanged = false;
+
+    for (const fb of this.fireballs) {
+      fb.update(delta);
+
+      for (const c of this.creatures) {
+        if (!c.isApproaching()) continue;
+        c.getHitCenter(this.hitCenter);
+        if (fb.position.distanceToSquared(this.hitCenter) < FIREBALL_HIT_RADIUS ** 2) {
+          c.disintegrate();
+          fb.explode(true);
+          if (scoring) {
+            this.state.score++;
+            this.state.streak++;
+            this.state.consecutiveMisses = 0;
+            this.state.creaturesHandled++;
+            this.currentSpeed = BASE_SPEED;
+            stateChanged = true;
+          }
+          break;
+        }
+      }
+
+      if (!fb.isDead() && fb.hasExpired()) {
+        fb.explode(false);
+        if (scoring) {
+          this.state.streak = 0;
+          this.state.misses++;
+          stateChanged = true;
+        }
       }
     }
 
-    const intersects = this.raycaster.intersectObjects(targets, true);
-    if (intersects.length === 0) return;
+    this.fireballs = this.fireballs.filter((fb) => {
+      if (fb.isDead()) {
+        this.world.scene.remove(fb.mesh);
+        return false;
+      }
+      return true;
+    });
 
-    // Walk up the parent chain to find the creature group
-    let hitObj: THREE.Object3D | null = intersects[0].object;
-    let creature: Creature | undefined;
-    while (hitObj) {
-      creature = groupToCreature.get(hitObj);
-      if (creature) break;
-      hitObj = hitObj.parent;
-    }
-    if (!creature) return;
-
-    if (creature.type === 'ghost') {
-      creature.disintegrate();
-      this.state.score++;
-      this.state.streak++;
-      this.state.consecutiveMisses = 0;
-      this.state.creaturesHandled++;
-      this.currentSpeed = BASE_SPEED;
-    } else {
-      creature.flashTorch();
-      this.state.streak = 0;
-    }
-
-    this.callbacks.onStateChange({ ...this.state });
+    if (stateChanged) this.callbacks.onStateChange({ ...this.state });
   }
 
   private pickLane(): number {
@@ -166,20 +198,12 @@ export class GameManager {
   }
 
   private spawnCreature(): void {
-    const type: CreatureType = Math.random() > 0.5 ? 'human' : 'ghost';
     const lane = this.pickLane();
     const spawnZ = SPAWN_Z_MIN + Math.random() * (SPAWN_Z_MAX - SPAWN_Z_MIN);
-
-    const speed = type === 'human'
-      ? this.currentSpeed * FRIENDLY_SPEED_MULT
-      : this.currentSpeed;
-    const pattern: MovementPattern = type === 'human'
-      ? 'straight'
-      : this.pickPattern();
+    const pattern: MovementPattern = this.pickPattern();
 
     const creature = new Creature({
-      type,
-      speed,
+      speed: this.currentSpeed,
       spawnZ,
       targetZ: TARGET_Z,
       spawnX: LANES[lane],
@@ -201,6 +225,7 @@ export class GameManager {
     this.hands.update(delta, now * 0.001);
     this.world.update(now * 0.001);
     this.fx.update(delta);
+    this.updateFireballs(delta, this.state.phase === 'playing');
 
     if (this.state.phase === 'playing') {
       this.state.timeRemaining -= delta;
@@ -233,15 +258,11 @@ export class GameManager {
       creature.update(delta);
 
       if (creature.isAlive() && !creature.wasHandled() && creature.hasReachedTarget()) {
-        if (creature.type === 'ghost') {
-          this.state.misses++;
-          this.state.consecutiveMisses++;
-          this.state.streak = 0;
-          this.currentSpeed += SPEED_PENALTY * this.state.consecutiveMisses;
-          creature.reachPlayer();
-        } else {
-          creature.peacefulVanish();
-        }
+        this.state.misses++;
+        this.state.consecutiveMisses++;
+        this.state.streak = 0;
+        this.currentSpeed += SPEED_PENALTY * this.state.consecutiveMisses;
+        creature.reachPlayer();
         this.state.creaturesHandled++;
         this.callbacks.onStateChange({ ...this.state });
       }
