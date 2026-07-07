@@ -155,6 +155,8 @@ export class Props {
   private smokeDrift: { x: number; speed: number; phase: number }[] = [];
   private fireflyMat: THREE.ShaderMaterial;
   private proceduralStones: THREE.Mesh | null = null;
+  /** Shared with the grass material's injected wind shader. */
+  private grassTime = { value: 0 };
   /** Grave placements shared by the procedural stand-ins, the kit models, and the dirt mounds. */
   private stoneSpots: StoneSpot[] = [];
 
@@ -355,30 +357,68 @@ export class Props {
     this.group.add(rocks);
   }
 
-  // ─── GRASS TUFTS (clusters of thin dark cones, silhouette-style) ──
+  // ─── GRASS (patchy silhouette tufts that sway in the wind) ────────
+  // Blades grow in patches (clusters of clusters) for a natural
+  // distribution. Wind is injected into the shared MeshBasicMaterial's
+  // vertex shader via onBeforeCompile — displacement scales with height²
+  // so bases stay planted while tips wave. One merged geometry, fog and
+  // silhouette color kept from the stock material.
   private buildGrass(): void {
     const geos: THREE.BufferGeometry[] = [];
-    for (let i = 0; i < 60; i++) {
-      const side = i % 2 === 0 ? -1 : 1;
-      const cx = side * (1.8 + Math.random() * 7);
-      const cz = -1 - Math.random() * 28;
-      const blades = 2 + Math.floor(Math.random() * 3);
+    const addTuft = (cx: number, cz: number, tall: number): void => {
+      const blades = 3 + Math.floor(Math.random() * 3);
       for (let b = 0; b < blades; b++) {
-        const h = 0.14 + Math.random() * 0.22;
-        const blade = new THREE.ConeGeometry(0.025 + Math.random() * 0.03, h, 3, 1, true);
+        const h = (0.15 + Math.random() * 0.3) * tall;
+        const blade = new THREE.ConeGeometry(0.014 + Math.random() * 0.018, h, 3, 1, true);
         blade.translate(0, h / 2, 0);
         const m = new THREE.Matrix4()
-          .makeTranslation(cx + (Math.random() - 0.5) * 0.24, -0.01, cz + (Math.random() - 0.5) * 0.24)
+          .makeTranslation(cx + (Math.random() - 0.5) * 0.3, -0.01, cz + (Math.random() - 0.5) * 0.3)
           .multiply(new THREE.Matrix4().makeRotationY(Math.random() * Math.PI * 2))
-          .multiply(new THREE.Matrix4().makeRotationZ((Math.random() - 0.5) * 0.5));
+          .multiply(new THREE.Matrix4().makeRotationZ((Math.random() - 0.5) * 0.6));
         blade.applyMatrix4(m);
         geos.push(blade);
       }
+    };
+
+    // patches scattered off the path…
+    for (let p = 0; p < 14; p++) {
+      const side = p % 2 === 0 ? -1 : 1;
+      const px = side * (2.0 + Math.random() * 6.5);
+      const pz = -1.5 - Math.random() * 27;
+      const tufts = 5 + Math.floor(Math.random() * 5);
+      for (let t = 0; t < tufts; t++) {
+        addTuft(
+          px + (Math.random() - 0.5) * 1.6,
+          pz + (Math.random() - 0.5) * 1.6,
+          1 + Math.random() * 0.4
+        );
+      }
     }
+    // …plus taller lone reeds hugging the path edges, backlit by the pool
+    for (let i = 0; i < 16; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      addTuft(side * (1.6 + Math.random() * 0.35), -1 - Math.random() * 28, 1.5 + Math.random() * 0.6);
+    }
+
     const merged = mergeGeometries(geos);
     for (const g of geos) g.dispose();
-    // near-black like the trees — reads as tufts against the lit ground
-    const grass = new THREE.Mesh(merged, new THREE.MeshBasicMaterial({ color: 0x02040a }));
+
+    const mat = new THREE.MeshBasicMaterial({ color: 0x02040a });
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms['uTime'] = this.grassTime;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float uTime;')
+        .replace(
+          '#include <begin_vertex>',
+          /* glsl */ `#include <begin_vertex>
+          float sway = transformed.y * transformed.y * 0.5;
+          float phase = transformed.x * 1.7 + transformed.z * 0.9;
+          transformed.x += (sin(uTime * 1.6 + phase) + 0.35 * sin(uTime * 3.7 + phase * 2.3)) * sway;
+          transformed.z += cos(uTime * 1.2 + phase) * sway * 0.4;`
+        );
+    };
+    const grass = new THREE.Mesh(merged, mat);
+    grass.frustumCulled = false; // swaying tips can exceed the static bounds
     this.group.add(grass);
   }
 
@@ -486,6 +526,7 @@ export class Props {
 
   update(time: number): void {
     this.fireflyMat.uniforms.uTime!.value = time;
+    this.grassTime.value = time;
     for (let i = 0; i < this.mistPlanes.length; i++) {
       const mist = this.mistPlanes[i]!;
       mist.position.x = (i - 1) * 1.5 + Math.sin(time * 0.07 + i * 2.1) * 1.6;

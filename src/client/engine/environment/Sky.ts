@@ -177,7 +177,7 @@ export class Sky {
       fog: false,
       depthWrite: false,
     });
-    const halo = new THREE.Mesh(new THREE.CircleGeometry(8.5, 24), haloMat);
+    const halo = new THREE.Mesh(new THREE.CircleGeometry(6.5, 24), haloMat);
     halo.position.copy(moonPos);
     halo.lookAt(0, 2.5, 6);
     halo.renderOrder = -1;
@@ -185,7 +185,7 @@ export class Sky {
 
     const mat = new THREE.MeshBasicMaterial({ map: tex, fog: false });
     mat.color.multiplyScalar(1.25); // just over the bloom threshold — soft glow, no wash
-    const moon = new THREE.Mesh(new THREE.CircleGeometry(4.8, 24), mat);
+    const moon = new THREE.Mesh(new THREE.CircleGeometry(3.8, 24), mat);
     moon.position.copy(moonPos);
     moon.lookAt(0, 2.5, 6);
     moon.translateZ(0.5); // sit in front of the halo
