@@ -44,7 +44,7 @@ export class Sky {
           vec3 col = mix(uHorizon, uZenith, pow(h, 0.65));
           // faint haze around the moon
           float moonGlow = pow(max(dot(dir, uMoonDir), 0.0), 16.0);
-          col += vec3(0.04, 0.05, 0.08) * moonGlow;
+          col += vec3(0.02, 0.025, 0.04) * moonGlow;
           gl_FragColor = vec4(col, 1.0);
         }
       `,
@@ -137,19 +137,19 @@ export class Sky {
     const haloMat = new THREE.MeshBasicMaterial({
       color: 0x8890b8,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.1,
       blending: THREE.AdditiveBlending,
       fog: false,
       depthWrite: false,
     });
-    const halo = new THREE.Mesh(new THREE.CircleGeometry(9, 24), haloMat);
+    const halo = new THREE.Mesh(new THREE.CircleGeometry(6.5, 24), haloMat);
     halo.position.copy(moonPos);
     halo.lookAt(0, 2.5, 6);
     halo.renderOrder = -1;
     this.group.add(halo);
 
     const mat = new THREE.MeshBasicMaterial({ map: tex, fog: false });
-    mat.color.multiplyScalar(1.8); // blooms
+    mat.color.multiplyScalar(1.25); // just over the bloom threshold — soft glow, no wash
     const moon = new THREE.Mesh(new THREE.CircleGeometry(5, 24), mat);
     moon.position.copy(moonPos);
     moon.lookAt(0, 2.5, 6);

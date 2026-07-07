@@ -1,31 +1,63 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import ghostUrl from '../assets/character-ghost.glb?url';
+import ghostUrl from '../assets/ghost.glb?url';
 import gravestoneCrossUrl from '../assets/gravestone-cross.glb?url';
 import gravestoneRoundUrl from '../assets/gravestone-round.glb?url';
 import gravestoneBrokenUrl from '../assets/gravestone-broken.glb?url';
 import cryptUrl from '../assets/crypt-small.glb?url';
+import lanternUrl from '../assets/lantern-glass.glb?url';
 
-// Models from Kenney's Graveyard Kit (kenney.nl, CC0)
-export interface GameAssets {
-  ghost: THREE.Group;
-  gravestones: THREE.Group[];
-  crypt: THREE.Group;
+// Ghost by Quaternius (poly.pizza, CC0); props/lantern from Kenney's
+// Graveyard Kit (kenney.nl, CC0).
+
+export interface GhostAsset {
+  /** Normalized: height exactly 1, feet at y=0, centered on x/z. */
+  model: THREE.Group;
+  animations: THREE.AnimationClip[];
 }
 
-async function loadModel(loader: GLTFLoader, url: string): Promise<THREE.Group> {
-  const gltf = await loader.loadAsync(url);
-  return gltf.scene;
+export interface GameAssets {
+  ghost: GhostAsset;
+  gravestones: THREE.Group[];
+  crypt: THREE.Group;
+  /** Normalized to height 1 like the ghost. */
+  lantern: THREE.Group;
+}
+
+/** Wrap a scene so the wrapper is height 1 with feet at the origin. */
+function normalize(scene: THREE.Group): THREE.Group {
+  const box = new THREE.Box3().setFromObject(scene);
+  const height = Math.max(box.max.y - box.min.y, 0.0001);
+  scene.scale.setScalar(1 / height);
+  const scaled = new THREE.Box3().setFromObject(scene);
+  scene.position.set(
+    -(scaled.min.x + scaled.max.x) / 2,
+    -scaled.min.y,
+    -(scaled.min.z + scaled.max.z) / 2
+  );
+  const wrapper = new THREE.Group();
+  wrapper.add(scene);
+  return wrapper;
 }
 
 export async function loadGameAssets(): Promise<GameAssets> {
   const loader = new GLTFLoader();
-  const [ghost, cross, round, broken, crypt] = await Promise.all([
-    loadModel(loader, ghostUrl),
-    loadModel(loader, gravestoneCrossUrl),
-    loadModel(loader, gravestoneRoundUrl),
-    loadModel(loader, gravestoneBrokenUrl),
-    loadModel(loader, cryptUrl),
+  const [ghostGltf, cross, round, broken, crypt, lantern] = await Promise.all([
+    loader.loadAsync(ghostUrl),
+    loader.loadAsync(gravestoneCrossUrl),
+    loader.loadAsync(gravestoneRoundUrl),
+    loader.loadAsync(gravestoneBrokenUrl),
+    loader.loadAsync(cryptUrl),
+    loader.loadAsync(lanternUrl),
   ]);
-  return { ghost, gravestones: [cross, round, broken], crypt };
+
+  return {
+    ghost: {
+      model: normalize(ghostGltf.scene),
+      animations: ghostGltf.animations,
+    },
+    gravestones: [cross.scene, round.scene, broken.scene],
+    crypt: crypt.scene,
+    lantern: normalize(lantern.scene),
+  };
 }

@@ -130,7 +130,8 @@ git push origin feature/your-feature
 
 ## Credits
 
-Ghost, gravestone, and crypt models from the [Kenney Graveyard Kit](https://kenney.nl/assets/graveyard-kit) (CC0).
+- Ghost model by [Quaternius](https://poly.pizza/m/Iip30bDHmu) (CC0)
+- Gravestone, crypt, and lantern models from the [Kenney Graveyard Kit](https://kenney.nl/assets/graveyard-kit) (CC0)
 
 ## License
 

@@ -1,11 +1,13 @@
 import * as THREE from 'three';
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import type { ParticleSystem } from './effects/Particles';
 
 export type MovementPattern = 'straight' | 'weave' | 'zigzag' | 'flank';
 
 export interface CreatureConfig {
-  /** Loaded ghost template (Kenney character-ghost) — cloned per creature. */
+  /** Normalized rigged ghost template (Quaternius) — cloned per creature. */
   model: THREE.Group;
+  animations: THREE.AnimationClip[];
   speed: number;
   spawnZ: number;
   targetZ: number;
@@ -21,7 +23,8 @@ const FADE_DURATION = 0.35;
 const IMPACT_DURATION = 0.4;
 const IMPACT_INTENSITY = 4;
 const HIT_RADIUS = 0.5;
-const MODEL_SCALE = 2.6; // Kenney ghost is ~0.55 units tall
+const GHOST_HEIGHT = 1.5; // template is normalized to height 1
+const IDLE_CLIP = 'CharacterArmature|Flying_Idle';
 
 // HDR particle colors (>1 blooms)
 const GHOST_BURST_COLOR = new THREE.Color(0x99ffdd).multiplyScalar(1.8);
@@ -68,8 +71,8 @@ export class Creature {
   private fadeBaseOpacities: number[] = [];
 
   private bodyMat: THREE.MeshStandardMaterial | null = null;
-  private armLeft: THREE.Object3D | null = null;
-  private armRight: THREE.Object3D | null = null;
+  private eyeMats: THREE.MeshBasicMaterial[] = [];
+  private mixer: THREE.AnimationMixer | null = null;
   private modelRoot: THREE.Group;
   private aura: THREE.Mesh;
   private wispTimer = 0;
@@ -86,30 +89,52 @@ export class Creature {
     this.baseX = config.spawnX ?? (Math.random() - 0.5) * 3;
     this.flankTarget = this.baseX > 0 ? -0.5 : 0.5;
 
-    // Clone shares geometry with the template; only the material is
-    // cloned (once, shared by torso + both arms) so fades stay private.
-    this.modelRoot = config.model.clone(true);
-    this.modelRoot.scale.setScalar(MODEL_SCALE);
+    // SkeletonUtils.clone keeps the skinned mesh bound to its own cloned
+    // bones; geometry stays shared with the template.
+    this.modelRoot = cloneSkeleton(config.model) as THREE.Group;
+    this.modelRoot.scale.setScalar(GHOST_HEIGHT);
+    const matCache = new Map<THREE.Material, THREE.Material>();
     this.modelRoot.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        if (!this.bodyMat) {
-          const mat = (child.material as THREE.MeshStandardMaterial).clone();
-          mat.transparent = true;
-          mat.opacity = 0.85;
+      if (!(child instanceof THREE.Mesh)) return;
+      child.frustumCulled = false; // skinned bounds are bind-pose only
+      const src = child.material as THREE.Material;
+      let mat = matCache.get(src);
+      if (!mat) {
+        if (src.name === 'Eye_White') {
+          // sclera becomes the glowing red bloom halo
+          const eye = new THREE.MeshBasicMaterial({ color: 0xff2200, transparent: true });
+          eye.color.multiplyScalar(2.4);
+          this.eyeMats.push(eye);
+          mat = eye;
+        } else if (src.name === 'Eye_Black') {
+          mat = new THREE.MeshBasicMaterial({ color: 0x1a0505, transparent: true });
+        } else {
+          const body = (src as THREE.MeshStandardMaterial).clone();
+          body.transparent = true;
+          body.opacity = 0.8;
           // faint self-glow so the ghost reads inside the fog before
           // the lantern light reaches it
-          mat.emissive.setHex(0x8899bb);
-          mat.emissiveIntensity = 0.35;
-          if (mat.map) mat.emissiveMap = mat.map;
-          this.bodyMat = mat;
-          this.ownedMaterials.push(mat);
+          body.emissive.setHex(0x8899bb);
+          body.emissiveIntensity = 0.35;
+          this.bodyMat = body;
+          mat = body;
         }
-        child.material = this.bodyMat;
+        this.ownedMaterials.push(mat);
+        matCache.set(src, mat);
       }
+      child.material = mat;
     });
-    this.armLeft = this.modelRoot.getObjectByName('arm-left') ?? null;
-    this.armRight = this.modelRoot.getObjectByName('arm-right') ?? null;
     this.mesh.add(this.modelRoot);
+
+    // baked flying idle, desynced per creature
+    this.mixer = new THREE.AnimationMixer(this.modelRoot);
+    const clip = THREE.AnimationClip.findByName(config.animations, IDLE_CLIP);
+    if (clip) {
+      const action = this.mixer.clipAction(clip);
+      action.play();
+      action.time = Math.random() * clip.duration;
+      this.mixer.timeScale = 0.9 + Math.random() * 0.3;
+    }
 
     // Additive glow aura (shared material — hidden on death, never faded)
     this.aura = new THREE.Mesh(GHOST_AURA_GEO, AURA_MAT);
@@ -217,6 +242,7 @@ export class Creature {
         this.updateFading(delta);
         break;
       case 'approaching':
+        this.mixer?.update(delta);
         this.mesh.position.z += this.speed * delta;
         this.applyMovementPattern(delta, t);
         this.animate(t, delta);
@@ -301,20 +327,17 @@ export class Creature {
 
   // ─── ANIMATION ────────────────────────────────────────────────────
   private animate(t: number, delta: number): void {
-    // Floating hover with gentle bob
-    this.mesh.position.y = 0.15 + Math.sin(t * 1.8) * 0.12 + Math.sin(t * 0.7) * 0.06;
+    // Gentle group hover on top of the baked Flying_Idle (kept small so
+    // the two don't fight)
+    this.mesh.position.y = 0.1 + Math.sin(t * 1.8) * 0.07 + Math.sin(t * 0.7) * 0.04;
     this.mesh.position.x += Math.sin(t * 2.2) * 0.002;
     this.mesh.rotation.y = Math.sin(t * 1.0) * 0.08;
-    this.mesh.rotation.z = Math.sin(t * 1.4) * 0.05;
+    this.mesh.rotation.z = Math.sin(t * 1.4) * 0.04;
 
-    // Arms sway ethereally (named nodes in the Kenney model)
-    if (this.armLeft) {
-      this.armLeft.rotation.z = 0.25 + Math.sin(t * 1.3) * 0.25;
-      this.armLeft.rotation.x = Math.sin(t * 1.8) * 0.15;
-    }
-    if (this.armRight) {
-      this.armRight.rotation.z = -0.25 - Math.sin(t * 1.3 + 0.7) * 0.25;
-      this.armRight.rotation.x = Math.sin(t * 1.8 + 0.7) * 0.15;
+    // Flickering red eyes
+    const flicker = Math.random() > 0.94 ? 0.2 : 1.0;
+    for (const mat of this.eyeMats) {
+      mat.opacity = (0.85 + Math.sin(t * 5) * 0.1) * flicker;
     }
 
     // Trailing wisps shed from the tail

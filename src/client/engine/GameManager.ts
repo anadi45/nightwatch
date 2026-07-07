@@ -65,6 +65,7 @@ export class GameManager {
     void loadGameAssets().then((assets) => {
       this.assets = assets;
       this.world.installKitProps(assets);
+      this.hands.installLantern(assets.lantern);
     });
     this.state = this.freshState();
     this.lastTime = performance.now();
@@ -211,7 +212,8 @@ export class GameManager {
     const pattern: MovementPattern = this.pickPattern();
 
     const creature = new Creature({
-      model: this.assets.ghost,
+      model: this.assets.ghost.model,
+      animations: this.assets.ghost.animations,
       speed: this.currentSpeed,
       spawnZ,
       targetZ: TARGET_Z,
