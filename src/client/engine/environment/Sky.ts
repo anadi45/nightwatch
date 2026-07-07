@@ -25,9 +25,10 @@ export class Sky {
   private buildDome(): void {
     const mat = new THREE.ShaderMaterial({
       uniforms: {
-        uHorizon: { value: new THREE.Color(0x5a6f9a) },
-        uZenith: { value: new THREE.Color(0x0a0e22) },
-        uMoonDir: { value: new THREE.Vector3(-6, 10, -46).normalize() },
+        uHorizon: { value: new THREE.Color(0x3d4a68) }, // concept fog haze — darker than before
+        uMid:     { value: new THREE.Color(0x1a2440) }, // mid-sky transition
+        uZenith:  { value: new THREE.Color(0x0a0e22) },
+        uMoonDir: { value: new THREE.Vector3(8, 13, -44).normalize() },
       },
       vertexShader: /* glsl */ `
         varying vec3 vPos;
@@ -38,18 +39,19 @@ export class Sky {
       `,
       fragmentShader: /* glsl */ `
         uniform vec3 uHorizon;
+        uniform vec3 uMid;
         uniform vec3 uZenith;
         uniform vec3 uMoonDir;
         varying vec3 vPos;
         void main() {
           vec3 dir = normalize(vPos);
-          float h = clamp(dir.y, 0.0, 1.0);
-          // 0.45 exponent keeps the bright band hugging the horizon —
-          // it's what silhouettes cut against, not a lit whole sky
-          vec3 col = mix(uHorizon, uZenith, pow(h, 0.45));
-          // haze around the moon — tight, so the sky glow stays modest
-          float moonGlow = pow(max(dot(dir, uMoonDir), 0.0), 14.0);
-          col += vec3(0.06, 0.07, 0.10) * moonGlow;
+          float h = pow(clamp(dir.y, 0.0, 1.0), 0.45);
+          // three-stop gradient: horizon → mid-sky → zenith
+          vec3 col = h < 0.42
+            ? mix(uHorizon, uMid,    h / 0.42)
+            : mix(uMid,    uZenith, (h - 0.42) / 0.58);
+          float moonGlow = pow(max(dot(dir, uMoonDir), 0.0), 16.0);
+          col += vec3(0.04, 0.05, 0.08) * moonGlow;
           gl_FragColor = vec4(col, 1.0);
         }
       `,
@@ -100,11 +102,11 @@ export class Sky {
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(0.08 + Math.random() * 0.9);
       const r = SKY_RADIUS - 5;
-      positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      positions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
       positions[i * 3 + 1] = r * Math.cos(phi);
       positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
       phases[i] = Math.random();
-      sizes[i] = 1.5 + Math.random();
+      sizes[i]  = 0.7 + Math.random() * 1.1; // smaller, more delicate
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -119,7 +121,7 @@ export class Sky {
         uniform float uTime;
         varying float vAlpha;
         void main() {
-          vAlpha = 0.35 + 0.65 * (0.5 + 0.5 * sin(uTime * (0.4 + aPhase * 1.6) + aPhase * 6.283));
+          vAlpha = 0.18 + 0.52 * (0.5 + 0.5 * sin(uTime * (0.4 + aPhase * 1.6) + aPhase * 6.283));
           gl_PointSize = aSize;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
@@ -128,8 +130,9 @@ export class Sky {
         varying float vAlpha;
         void main() {
           float d = length(gl_PointCoord - 0.5);
-          float a = smoothstep(0.5, 0.1, d) * vAlpha;
-          gl_FragColor = vec4(vec3(0.75, 0.8, 1.0) * a, a);
+          // cooler blue-white (#c8d8f4), dimmer range (0.18–0.70) vs old (0.35–1.0)
+          float a = smoothstep(0.5, 0.08, d) * vAlpha;
+          gl_FragColor = vec4(vec3(0.78, 0.85, 0.96) * a, a);
         }
       `,
       blending: THREE.AdditiveBlending,
@@ -145,50 +148,62 @@ export class Sky {
   }
 
   private buildMoon(): void {
-    // procedural maria blotches on a small canvas
+    // Upper-right position — matches concept art; elevation stays low enough
+    // that hill ridges and trees can still silhouette against it.
+    const moonPos = new THREE.Vector3(8, 13, -44);
+    const lookTarget = new THREE.Vector3(0, 2.5, 6);
+
+    // Four layered additive halos (large→small, dim→bright) matching concept art
+    const haloLayers: [number, number][] = [
+      [14.5, 0.028], [10.5, 0.048], [7.2, 0.07], [5.0, 0.10],
+    ];
+    for (const [radius, opacity] of haloLayers) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x8898c8,
+        transparent: true,
+        opacity,
+        blending: THREE.AdditiveBlending,
+        fog: false,
+        depthWrite: false,
+      });
+      const halo = new THREE.Mesh(new THREE.CircleGeometry(radius, 24), mat);
+      halo.position.copy(moonPos);
+      halo.lookAt(lookTarget);
+      halo.renderOrder = -1;
+      this.group.add(halo);
+    }
+
+    // Disc: radial gradient canvas — bright ivory centre fading to cool slate edge,
+    // with subtle maria blotches. Matches concept: #f2f6ff → #8ca8d0.
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = 128;
     const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#d8d8e8';
+    const grad = ctx.createRadialGradient(64, 58, 4, 64, 64, 64);
+    grad.addColorStop(0.0,  '#f2f6ff');
+    grad.addColorStop(0.55, '#d0e0f8');
+    grad.addColorStop(1.0,  '#8ca8d0');
+    ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 128, 128);
-    ctx.fillStyle = '#b4b4cc';
-    const blotches: [number, number, number][] = [
-      [45, 40, 18], [80, 60, 14], [60, 90, 11], [95, 35, 8], [35, 75, 9],
+    // subtle maria
+    ctx.globalAlpha = 0.09;
+    ctx.fillStyle = '#607090';
+    const blotches: [number, number, number, number][] = [
+      [72, 48, 10, 6], [44, 64, 7, 5], [82, 80, 8, 6], [56, 90, 6, 4],
     ];
-    for (const [x, y, r] of blotches) {
+    for (const [x, y, rx, ry] of blotches) {
       ctx.beginPath();
-      ctx.ellipse(x, y, r, r * 0.8, 0.5, 0, Math.PI * 2);
+      ctx.ellipse(x, y, rx, ry, 0.4, 0, Math.PI * 2);
       ctx.fill();
     }
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
 
-    // low over the left horizon so hill ridges and trees can silhouette
-    // against the disc — elevation must stay under ~19° or the camera's
-    // pitch hides it
-    const moonPos = new THREE.Vector3(-6, 10, -46);
-
-    // additive halo behind the disc — visible even without bloom
-    const haloMat = new THREE.MeshBasicMaterial({
-      color: 0x8890b8,
-      transparent: true,
-      opacity: 0.16,
-      blending: THREE.AdditiveBlending,
-      fog: false,
-      depthWrite: false,
-    });
-    const halo = new THREE.Mesh(new THREE.CircleGeometry(6.5, 24), haloMat);
-    halo.position.copy(moonPos);
-    halo.lookAt(0, 2.5, 6);
-    halo.renderOrder = -1;
-    this.group.add(halo);
-
     const mat = new THREE.MeshBasicMaterial({ map: tex, fog: false });
-    mat.color.multiplyScalar(1.25); // just over the bloom threshold — soft glow, no wash
-    const moon = new THREE.Mesh(new THREE.CircleGeometry(3.8, 24), mat);
+    mat.color.multiplyScalar(1.20); // nudge over bloom threshold for soft glow
+    const moon = new THREE.Mesh(new THREE.CircleGeometry(3.8, 32), mat);
     moon.position.copy(moonPos);
-    moon.lookAt(0, 2.5, 6);
-    moon.translateZ(0.5); // sit in front of the halo
+    moon.lookAt(lookTarget);
+    moon.translateZ(0.5);
     moon.renderOrder = -1;
     this.group.add(moon);
   }
