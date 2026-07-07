@@ -37,7 +37,7 @@ const HIT_GEO = new THREE.SphereGeometry(HIT_RADIUS, 6, 6);
 const AURA_MAT = new THREE.MeshBasicMaterial({
   color: new THREE.Color(0x334466).multiplyScalar(1.4),
   transparent: true,
-  opacity: 0.06,
+  opacity: 0.09,
   blending: THREE.AdditiveBlending,
   side: THREE.BackSide,
 });
@@ -111,11 +111,12 @@ export class Creature {
         } else {
           const body = (src as THREE.MeshStandardMaterial).clone();
           body.transparent = true;
-          body.opacity = 0.8;
-          // faint self-glow so the ghost reads inside the fog before
-          // the lantern light reaches it
-          body.emissive.setHex(0x8899bb);
-          body.emissiveIntensity = 0.35;
+          body.opacity = 0.85;
+          // strong cold self-glow — in the silhouette scene the ghost is
+          // the only pale luminous thing, so it must read as its own
+          // light source, not a lit object
+          body.emissive.setHex(0xaac4ee);
+          body.emissiveIntensity = 0.6;
           this.bodyMat = body;
           mat = body;
         }

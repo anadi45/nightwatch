@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { PostFX } from './PostFX';
 import { Sky } from './environment/Sky';
-import { Props, makeGroundTexture, makePathTexture } from './environment/Props';
+import { Props, makeMoonPoolTexture, makePathTexture } from './environment/Props';
 
 export class World {
   readonly scene: THREE.Scene;
@@ -15,8 +15,11 @@ export class World {
 
   constructor(container: HTMLElement) {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x050510);
-    this.scene.fog = new THREE.FogExp2(0x050510, 0.06);
+    this.scene.background = new THREE.Color(0x0a0e22);
+    // Silhouette-horror fog: distance fades toward pale moonlit haze, not
+    // black — that's what separates the scene into paper-cut layers.
+    // Density 0.06 must stay in sync with the particle shader's manual fog.
+    this.scene.fog = new THREE.FogExp2(0x3d4a68, 0.06);
 
     const w = container.clientWidth;
     const h = container.clientHeight;
@@ -36,10 +39,18 @@ export class World {
     this.postfx = new PostFX(this.renderer, this.scene, this.camera, w, h);
 
     // Intensities tuned for ACES tone mapping (darker rolloff than linear)
-    const ambient = new THREE.AmbientLight(0x111122, 0.35);
+    const ambient = new THREE.AmbientLight(0x25304a, 0.3);
     this.scene.add(ambient);
 
-    this.lanternLight = new THREE.PointLight(0xf4c430, 2.0, 20, 2);
+    // Cool moonlight from behind the scene (the moon's position) — a
+    // backlight that rims ghosts and hands while fronts stay dark, which
+    // is the whole silhouette look. Directionals are cheap: no shadows.
+    const moonlight = new THREE.DirectionalLight(0xa9bfe8, 0.55);
+    moonlight.position.set(-6, 10, -46);
+    this.scene.add(moonlight);
+
+    // warm pool near the player only — the world stays moon-cold
+    this.lanternLight = new THREE.PointLight(0xf4c430, 1.5, 12, 2);
     this.lanternLight.position.set(0, 3, 5);
     this.scene.add(this.lanternLight);
 
@@ -61,24 +72,36 @@ export class World {
     this.props = new Props();
     this.scene.add(this.props.group);
 
-    // grayscale noise maps multiply the base color (~0.55 avg), so the
-    // colors here are roughly double the intended on-screen shade
-    const groundGeo = new THREE.PlaneGeometry(20, 40);
+    // Near-black ground with a baked moonlight pool down the middle (the
+    // emissive map is grayscale, tinted by the emissive color). Oversized
+    // so no edge ever shows against the luminous horizon.
+    const groundGeo = new THREE.PlaneGeometry(60, 100);
     const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x161634,
-      roughness: 0.95,
-      map: makeGroundTexture(),
+      color: 0x10121f,
+      roughness: 1,
+      emissive: 0x93a7cf,
+      emissiveIntensity: 0.38,
+      emissiveMap: makeMoonPoolTexture(),
     });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
-    ground.position.z = -10;
+    ground.position.z = -20;
     this.scene.add(ground);
 
-    const pathGeo = new THREE.PlaneGeometry(3, 40);
+    // Moonlit path strip: the texture multiplies both color and emissive
+    // (streaks stay visible in the glow); transparent for its
+    // alpha-feathered ragged edges
+    const pathGeo = new THREE.PlaneGeometry(3.4, 40);
+    const pathTex = makePathTexture();
     const pathMat = new THREE.MeshStandardMaterial({
-      color: 0x28284a,
+      color: 0x3f4a6a,
       roughness: 0.8,
-      map: makePathTexture(),
+      map: pathTex,
+      emissive: 0x8fa3c8,
+      emissiveIntensity: 0.3,
+      emissiveMap: pathTex,
+      transparent: true,
+      depthWrite: false,
     });
     const path = new THREE.Mesh(pathGeo, pathMat);
     path.rotation.x = -Math.PI / 2;
@@ -116,10 +139,8 @@ export class World {
     }
     const merged = mergeGeometries(geos);
     for (const g of geos) g.dispose();
-    const fence = new THREE.Mesh(
-      merged,
-      new THREE.MeshStandardMaterial({ color: 0x2a2a3a, roughness: 0.9 })
-    );
+    // pure cutout — silhouettes don't take light
+    const fence = new THREE.Mesh(merged, new THREE.MeshBasicMaterial({ color: 0x05060c }));
     this.scene.add(fence);
   }
 
@@ -129,7 +150,7 @@ export class World {
   }
 
   update(time: number): void {
-    this.lanternLight.intensity = 2.0 + Math.sin(time * 3) * 0.4;
+    this.lanternLight.intensity = 1.5 + Math.sin(time * 3) * 0.3;
     this.sky.update(time);
     this.props.update(time);
   }

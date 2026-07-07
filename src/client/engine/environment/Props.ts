@@ -1,35 +1,54 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-/** Grayscale noise texture that multiplies the ground material color. */
-export function makeGroundTexture(): THREE.CanvasTexture {
-  const size = 256;
+/**
+ * Grayscale moonlight pool for the ground's emissive map (tinted by the
+ * material's emissive color). One soft elliptical pool of light centered
+ * on the path, biased toward the far half where the moon hangs, with
+ * grain so it reads as lit earth instead of a gradient. Not tiled — it
+ * maps 1:1 onto the oversized ground plane (canvas top = far edge).
+ */
+export function makeMoonPoolTexture(): THREE.CanvasTexture {
+  const size = 512;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#8a8a8a';
+  ctx.fillStyle = '#000000';
   ctx.fillRect(0, 0, size, size);
-  for (let i = 0; i < 900; i++) {
-    const v = 100 + Math.floor(Math.random() * 90);
-    ctx.fillStyle = `rgba(${v},${v},${v},0.5)`;
-    const r = 2 + Math.random() * 9;
-    ctx.beginPath();
-    ctx.arc(Math.random() * size, Math.random() * size, r, 0, Math.PI * 2);
-    ctx.fill();
+
+  // elongated pool along the path (stretched vertically = along z)
+  ctx.save();
+  ctx.translate(size / 2, size * 0.42);
+  ctx.scale(1, 2.4);
+  const pool = ctx.createRadialGradient(0, 0, 8, 0, 0, size * 0.24);
+  pool.addColorStop(0, 'rgba(255,255,255,0.85)');
+  pool.addColorStop(0.5, 'rgba(255,255,255,0.32)');
+  pool.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = pool;
+  ctx.fillRect(-size / 2, -size / 2, size, size);
+  ctx.restore();
+
+  // grain — mottles the pool so it reads as ground, not a gradient
+  for (let i = 0; i < 2600; i++) {
+    const v = Math.floor(Math.random() * 255);
+    ctx.fillStyle = `rgba(${v},${v},${v},0.16)`;
+    ctx.fillRect(Math.random() * size, Math.random() * size, 1 + Math.random(), 1 + Math.random());
   }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(4, 8);
-  return tex;
+
+  return new THREE.CanvasTexture(canvas);
 }
 
-/** Worn dirt streaks running along the path direction. */
+/**
+ * Worn dirt streaks running along the path direction, with alpha-feathered
+ * ragged edges so the path melts into the ground instead of ending in a
+ * hard seam. The material using this must set `transparent: true`.
+ */
 export function makePathTexture(): THREE.CanvasTexture {
   const size = 256;
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#909090';
+  ctx.fillStyle = '#8d8d8d';
   ctx.fillRect(0, 0, size, size);
   for (let i = 0; i < 60; i++) {
     const v = 105 + Math.floor(Math.random() * 80);
@@ -45,6 +64,29 @@ export function makePathTexture(): THREE.CanvasTexture {
     );
     ctx.stroke();
   }
+
+  // feather the left/right edges to full transparency…
+  ctx.globalCompositeOperation = 'destination-out';
+  const fade = ctx.createLinearGradient(0, 0, size, 0);
+  fade.addColorStop(0, 'rgba(0,0,0,1)');
+  fade.addColorStop(0.2, 'rgba(0,0,0,0)');
+  fade.addColorStop(0.8, 'rgba(0,0,0,0)');
+  fade.addColorStop(1, 'rgba(0,0,0,1)');
+  ctx.fillStyle = fade;
+  ctx.fillRect(0, 0, size, size);
+  // …and bite ragged notches out of them so the edge isn't a clean line
+  for (let i = 0; i < 26; i++) {
+    const edgeX = Math.random() < 0.5 ? Math.random() * size * 0.16 : size - Math.random() * size * 0.16;
+    const y = Math.random() * size;
+    const r = 8 + Math.random() * 18;
+    const grad = ctx.createRadialGradient(edgeX, y, 1, edgeX, y, r);
+    grad.addColorStop(0, 'rgba(0,0,0,0.9)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(edgeX - r, y - r, r * 2, r * 2);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(1, 6);
@@ -88,10 +130,23 @@ function makeMistTexture(): THREE.CanvasTexture {
   return new THREE.CanvasTexture(canvas);
 }
 
+// Shared cutout material for everything that reads as a black paper-cut
+// layer (kit models, stones, rocks, mounds). Never mutated, never disposed.
+const SILHOUETTE_MAT = new THREE.MeshBasicMaterial({ color: 0x05060c });
+
+interface StoneSpot {
+  x: number;
+  z: number;
+  ry: number;
+  rz: number;
+  s: number;
+}
+
 /**
- * Static graveyard decor: silhouetted dead trees, gravestones, drifting
- * ground mist, fireflies. Trees and gravestones each merge into a single
- * geometry — the whole class costs ~6 draw calls.
+ * Static graveyard decor: silhouetted dead trees, gravestones with dirt
+ * mounds, grass tufts, rocks, drifting ground mist, fireflies. Each
+ * scatter (trees, stones, mounds, rocks, grass) merges into a single
+ * geometry — the whole class costs ~9 draw calls.
  */
 export class Props {
   readonly group: THREE.Group;
@@ -100,11 +155,26 @@ export class Props {
   private smokeDrift: { x: number; speed: number; phase: number }[] = [];
   private fireflyMat: THREE.ShaderMaterial;
   private proceduralStones: THREE.Mesh | null = null;
+  /** Grave placements shared by the procedural stand-ins, the kit models, and the dirt mounds. */
+  private stoneSpots: StoneSpot[] = [];
 
   constructor() {
     this.group = new THREE.Group();
+    for (let i = 0; i < 10; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      this.stoneSpots.push({
+        x: side * (2.6 + Math.random() * 1.1),
+        z: -2 - Math.random() * 26,
+        ry: (Math.random() - 0.5) * 0.9,
+        rz: (Math.random() - 0.5) * 0.16,
+        s: 1.15 + Math.random() * 0.35,
+      });
+    }
     this.buildTrees();
     this.buildGravestones();
+    this.buildGraveMounds();
+    this.buildRocks();
+    this.buildGrass();
     this.buildMist();
     this.buildSmoke();
     this.fireflyMat = this.buildFireflies();
@@ -158,8 +228,10 @@ export class Props {
 
   /**
    * Replace the procedural gravestone slabs with Kenney kit models and
-   * add crypts. Kit materials are shared (never mutated), so clones are
-   * cheap and nothing extra needs disposing.
+   * add crypts. Every kit mesh gets the shared silhouette material — the
+   * cutout treatment is what unifies the kit's cartoony look with the
+   * rest of the scene. Original kit materials stay untouched on the
+   * templates; nothing extra needs disposing.
    */
   installKit(assets: { gravestones: THREE.Group[]; crypt: THREE.Group }): void {
     if (this.proceduralStones) {
@@ -169,14 +241,21 @@ export class Props {
       this.proceduralStones = null;
     }
 
-    for (let i = 0; i < 10; i++) {
+    const toSilhouette = (root: THREE.Object3D): void => {
+      root.traverse((child) => {
+        if (child instanceof THREE.Mesh) child.material = SILHOUETTE_MAT;
+      });
+    };
+
+    for (let i = 0; i < this.stoneSpots.length; i++) {
+      const spot = this.stoneSpots[i]!;
       const variant = assets.gravestones[i % assets.gravestones.length]!;
       const stone = variant.clone(true);
-      const side = i % 2 === 0 ? -1 : 1;
-      stone.position.set(side * (2.6 + Math.random() * 1.1), -0.04, -2 - Math.random() * 26);
-      stone.rotation.y = (Math.random() - 0.5) * 0.9;
-      stone.rotation.z = (Math.random() - 0.5) * 0.16;
-      stone.scale.setScalar(1.15 + Math.random() * 0.35);
+      toSilhouette(stone);
+      stone.position.set(spot.x, -0.04, spot.z);
+      stone.rotation.y = spot.ry;
+      stone.rotation.z = spot.rz;
+      stone.scale.setScalar(spot.s);
       this.group.add(stone);
     }
 
@@ -185,6 +264,7 @@ export class Props {
       [6.8, -24, -1.1],
     ] as const) {
       const crypt = assets.crypt.clone(true);
+      toSilhouette(crypt);
       crypt.position.set(x, -0.04, z);
       crypt.rotation.y = ry;
       crypt.scale.setScalar(1.6);
@@ -195,10 +275,9 @@ export class Props {
   // ─── GRAVESTONES (procedural stand-ins until the kit loads) ───────
   private buildGravestones(): void {
     const geos: THREE.BufferGeometry[] = [];
-    for (let i = 0; i < 9; i++) {
-      const side = i % 2 === 0 ? -1 : 1;
-      const w = 0.4 + Math.random() * 0.2;
-      const h = 0.5 + Math.random() * 0.35;
+    for (const spot of this.stoneSpots) {
+      const w = (0.4 + Math.random() * 0.2) * spot.s;
+      const h = (0.5 + Math.random() * 0.35) * spot.s;
 
       const slab = new THREE.BoxGeometry(w, h, 0.1);
       slab.translate(0, h / 2, 0);
@@ -207,36 +286,116 @@ export class Props {
       arch.translate(0, h, 0);
 
       const m = new THREE.Matrix4()
-        .makeTranslation(side * (2.6 + Math.random() * 0.9), -0.05, -2 - Math.random() * 26)
-        .multiply(new THREE.Matrix4().makeRotationY((Math.random() - 0.5) * 0.8))
-        .multiply(new THREE.Matrix4().makeRotationZ((Math.random() - 0.5) * 0.25));
+        .makeTranslation(spot.x, -0.05, spot.z)
+        .multiply(new THREE.Matrix4().makeRotationY(spot.ry))
+        .multiply(new THREE.Matrix4().makeRotationZ(spot.rz));
       slab.applyMatrix4(m);
       arch.applyMatrix4(m);
       geos.push(slab, arch);
     }
     const merged = mergeGeometries(geos);
     for (const g of geos) g.dispose();
-    this.proceduralStones = new THREE.Mesh(
-      merged,
-      new THREE.MeshStandardMaterial({ color: 0x2e2e3c, roughness: 0.9 })
-    );
+    // owned clone — installKit() disposes it when the kit swaps in
+    this.proceduralStones = new THREE.Mesh(merged, SILHOUETTE_MAT.clone());
     this.group.add(this.proceduralStones);
+  }
+
+  // ─── GRAVE MOUNDS (squashed spheres in front of each stone) ───────
+  // Persist when the kit swaps in: the spots are shared, so the mound
+  // stays aligned under whichever stone model ends up there.
+  private buildGraveMounds(): void {
+    const geos: THREE.BufferGeometry[] = [];
+    for (const spot of this.stoneSpots) {
+      const geo = new THREE.SphereGeometry(1, 8, 6);
+      // stones face +z (toward the camera); the mound extends that way
+      const m = new THREE.Matrix4().compose(
+        new THREE.Vector3(
+          spot.x + Math.sin(spot.ry) * 0.6 * spot.s,
+          0,
+          spot.z + Math.cos(spot.ry) * 0.6 * spot.s
+        ),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(0, spot.ry, 0)),
+        new THREE.Vector3(0.34, 0.13, 0.62).multiplyScalar(spot.s)
+      );
+      geo.applyMatrix4(m);
+      geos.push(geo);
+    }
+    const merged = mergeGeometries(geos);
+    for (const g of geos) g.dispose();
+    const mounds = new THREE.Mesh(merged, SILHOUETTE_MAT);
+    this.group.add(mounds);
+  }
+
+  // ─── ROCKS (boulders off the path, pebbles hugging its edges) ─────
+  private buildRocks(): void {
+    const geos: THREE.BufferGeometry[] = [];
+    const addRock = (x: number, z: number, r: number): void => {
+      const geo = new THREE.DodecahedronGeometry(r, 0);
+      const m = new THREE.Matrix4().compose(
+        new THREE.Vector3(x, r * 0.35, z),
+        new THREE.Quaternion().setFromEuler(
+          new THREE.Euler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+        ),
+        new THREE.Vector3(1, 0.65 + Math.random() * 0.25, 1)
+      );
+      geo.applyMatrix4(m);
+      geos.push(geo);
+    };
+    for (let i = 0; i < 12; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      addRock(side * (2.4 + Math.random() * 5.5), -2 - Math.random() * 27, 0.09 + Math.random() * 0.16);
+    }
+    for (let i = 0; i < 10; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      addRock(side * (1.55 + Math.random() * 0.3), -1 - Math.random() * 28, 0.035 + Math.random() * 0.05);
+    }
+    const merged = mergeGeometries(geos);
+    for (const g of geos) g.dispose();
+    const rocks = new THREE.Mesh(merged, SILHOUETTE_MAT);
+    this.group.add(rocks);
+  }
+
+  // ─── GRASS TUFTS (clusters of thin dark cones, silhouette-style) ──
+  private buildGrass(): void {
+    const geos: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < 60; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const cx = side * (1.8 + Math.random() * 7);
+      const cz = -1 - Math.random() * 28;
+      const blades = 2 + Math.floor(Math.random() * 3);
+      for (let b = 0; b < blades; b++) {
+        const h = 0.14 + Math.random() * 0.22;
+        const blade = new THREE.ConeGeometry(0.025 + Math.random() * 0.03, h, 3, 1, true);
+        blade.translate(0, h / 2, 0);
+        const m = new THREE.Matrix4()
+          .makeTranslation(cx + (Math.random() - 0.5) * 0.24, -0.01, cz + (Math.random() - 0.5) * 0.24)
+          .multiply(new THREE.Matrix4().makeRotationY(Math.random() * Math.PI * 2))
+          .multiply(new THREE.Matrix4().makeRotationZ((Math.random() - 0.5) * 0.5));
+        blade.applyMatrix4(m);
+        geos.push(blade);
+      }
+    }
+    const merged = mergeGeometries(geos);
+    for (const g of geos) g.dispose();
+    // near-black like the trees — reads as tufts against the lit ground
+    const grass = new THREE.Mesh(merged, new THREE.MeshBasicMaterial({ color: 0x02040a }));
+    this.group.add(grass);
   }
 
   // ─── GROUND MIST ──────────────────────────────────────────────────
   private buildMist(): void {
     const tex = makeMistTexture();
-    const geo = new THREE.PlaneGeometry(9, 3);
+    const geo = new THREE.PlaneGeometry(11, 3.4);
     const mat = new THREE.MeshBasicMaterial({
       map: tex,
       transparent: true,
-      opacity: 0.05,
+      opacity: 0.13,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
     for (let i = 0; i < 3; i++) {
       const mist = new THREE.Mesh(geo, mat);
-      mist.position.set((i - 1) * 1.5, 0.45, -5 - i * 6);
+      mist.position.set((i - 1) * 1.5, 0.4 + i * 0.12, -5 - i * 6);
       mist.renderOrder = 1;
       this.mistPlanes.push(mist);
       this.group.add(mist);

@@ -4,7 +4,9 @@ const SKY_RADIUS = 60;
 const STAR_COUNT = 200;
 
 /**
- * Night sky: gradient dome, twinkling stars, glowing moon.
+ * Night sky for the silhouette-horror look: a luminous moonlit horizon
+ * band that every black cutout layer reads against, twinkling stars, a
+ * large low moon, and hazy hill ridges layered like a paper-cut diorama.
  * All elements use fog-free materials — they sit conceptually beyond the
  * fog, and FogExp2 at 50+ units would otherwise erase them entirely.
  */
@@ -17,14 +19,15 @@ export class Sky {
     this.buildDome();
     this.starMat = this.buildStars();
     this.buildMoon();
+    this.buildHills();
   }
 
   private buildDome(): void {
     const mat = new THREE.ShaderMaterial({
       uniforms: {
-        uHorizon: { value: new THREE.Color(0x02020a) },
-        uZenith: { value: new THREE.Color(0x0a0a20) },
-        uMoonDir: { value: new THREE.Vector3(-8, 16, -46).normalize() },
+        uHorizon: { value: new THREE.Color(0x5a6f9a) },
+        uZenith: { value: new THREE.Color(0x0a0e22) },
+        uMoonDir: { value: new THREE.Vector3(-6, 10, -46).normalize() },
       },
       vertexShader: /* glsl */ `
         varying vec3 vPos;
@@ -41,10 +44,12 @@ export class Sky {
         void main() {
           vec3 dir = normalize(vPos);
           float h = clamp(dir.y, 0.0, 1.0);
-          vec3 col = mix(uHorizon, uZenith, pow(h, 0.65));
-          // faint haze around the moon
-          float moonGlow = pow(max(dot(dir, uMoonDir), 0.0), 16.0);
-          col += vec3(0.02, 0.025, 0.04) * moonGlow;
+          // 0.45 exponent keeps the bright band hugging the horizon —
+          // it's what silhouettes cut against, not a lit whole sky
+          vec3 col = mix(uHorizon, uZenith, pow(h, 0.45));
+          // haze around the moon — tight, so the sky glow stays modest
+          float moonGlow = pow(max(dot(dir, uMoonDir), 0.0), 14.0);
+          col += vec3(0.06, 0.07, 0.10) * moonGlow;
           gl_FragColor = vec4(col, 1.0);
         }
       `,
@@ -55,6 +60,35 @@ export class Sky {
     const dome = new THREE.Mesh(new THREE.SphereGeometry(SKY_RADIUS, 16, 12), mat);
     dome.renderOrder = -2;
     this.group.add(dome);
+  }
+
+  // ─── HILL RIDGES (paper-cut layers against the horizon glow) ──────
+  // Hand-colored per layer — farther = lighter, exactly what distance fog
+  // does to the playfield, so the diorama depth reads as one system.
+  private buildRidge(z: number, height: number, color: number, seed: number): void {
+    const width = 170;
+    const segs = 28;
+    const shape = new THREE.Shape();
+    shape.moveTo(-width / 2, -2);
+    for (let i = 0; i <= segs; i++) {
+      const x = -width / 2 + (i / segs) * width;
+      const rolling =
+        (0.55 + 0.45 * Math.sin(i * 0.9 + seed)) * (0.6 + 0.4 * Math.sin(i * 0.37 + seed * 2.3));
+      shape.lineTo(x, height * rolling);
+    }
+    shape.lineTo(width / 2, -2);
+    shape.closePath();
+    const ridge = new THREE.Mesh(
+      new THREE.ShapeGeometry(shape, 1),
+      new THREE.MeshBasicMaterial({ color, fog: false })
+    );
+    ridge.position.z = z;
+    this.group.add(ridge);
+  }
+
+  private buildHills(): void {
+    this.buildRidge(-52, 9, 0x2e3a58, 1.7); // far — palest, just off the sky band
+    this.buildRidge(-46, 6, 0x1a2238, 4.2); // near — darker, can bite into the moon
   }
 
   private buildStars(): THREE.ShaderMaterial {
@@ -129,20 +163,21 @@ export class Sky {
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
 
-    // upper-left of the default view, well outside the play field —
-    // elevation must stay under ~19° or the camera's pitch hides it
-    const moonPos = new THREE.Vector3(-8, 16, -46);
+    // low over the left horizon so hill ridges and trees can silhouette
+    // against the disc — elevation must stay under ~19° or the camera's
+    // pitch hides it
+    const moonPos = new THREE.Vector3(-6, 10, -46);
 
     // additive halo behind the disc — visible even without bloom
     const haloMat = new THREE.MeshBasicMaterial({
       color: 0x8890b8,
       transparent: true,
-      opacity: 0.1,
+      opacity: 0.16,
       blending: THREE.AdditiveBlending,
       fog: false,
       depthWrite: false,
     });
-    const halo = new THREE.Mesh(new THREE.CircleGeometry(6.5, 24), haloMat);
+    const halo = new THREE.Mesh(new THREE.CircleGeometry(8.5, 24), haloMat);
     halo.position.copy(moonPos);
     halo.lookAt(0, 2.5, 6);
     halo.renderOrder = -1;
@@ -150,7 +185,7 @@ export class Sky {
 
     const mat = new THREE.MeshBasicMaterial({ map: tex, fog: false });
     mat.color.multiplyScalar(1.25); // just over the bloom threshold — soft glow, no wash
-    const moon = new THREE.Mesh(new THREE.CircleGeometry(5, 24), mat);
+    const moon = new THREE.Mesh(new THREE.CircleGeometry(4.8, 24), mat);
     moon.position.copy(moonPos);
     moon.lookAt(0, 2.5, 6);
     moon.translateZ(0.5); // sit in front of the halo
