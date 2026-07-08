@@ -38,19 +38,26 @@ export class World {
 
     this.postfx = new PostFX(this.renderer, this.scene, this.camera, w, h);
 
-    // Intensities tuned for ACES tone mapping (darker rolloff than linear)
-    const ambient = new THREE.AmbientLight(0x25304a, 0.3);
+    // Ambient lifted so the ground and path are readable in gameplay
+    const ambient = new THREE.AmbientLight(0x2a3a5a, 0.75);
     this.scene.add(ambient);
 
-    // Cool moonlight from behind the scene (the moon's position) — a
-    // backlight that rims ghosts and hands while fronts stay dark, which
-    // is the whole silhouette look. Directionals are cheap: no shadows.
-    const moonlight = new THREE.DirectionalLight(0xa9bfe8, 0.55);
-    moonlight.position.set(-6, 10, -46);
+    // Moonlight direction updated to match new moon position (8,13,-44).
+    // Intensity raised so the scene ahead is legible — still cool and
+    // backlit but no longer invisible.
+    const moonlight = new THREE.DirectionalLight(0xa9bfe8, 1.0);
+    moonlight.position.set(8, 13, -44);
     this.scene.add(moonlight);
 
-    // warm pool near the player only — the world stays moon-cold
-    this.lanternLight = new THREE.PointLight(0xf4c430, 1.5, 12, 2);
+    // Dim forward fill from above-behind the player — illuminates the
+    // ground and approaching aliens without washing out the silhouette look.
+    const fill = new THREE.DirectionalLight(0x3a4d6a, 0.45);
+    fill.position.set(0, 8, 10);
+    this.scene.add(fill);
+
+    // Warm lantern pool — wider range and higher base so the near ground
+    // is always visible even without the old fire-orb light.
+    this.lanternLight = new THREE.PointLight(0xf4c430, 2.2, 20, 2);
     this.lanternLight.position.set(0, 3, 5);
     this.scene.add(this.lanternLight);
 
@@ -150,7 +157,7 @@ export class World {
   }
 
   update(time: number): void {
-    this.lanternLight.intensity = 1.5 + Math.sin(time * 3) * 0.3;
+    this.lanternLight.intensity = 2.2 + Math.sin(time * 3) * 0.3;
     this.sky.update(time);
     this.props.update(time);
   }
