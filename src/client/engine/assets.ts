@@ -1,26 +1,18 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import ghostUrl from '../assets/ghost.glb?url';
 import gravestoneCrossUrl from '../assets/gravestone-cross.glb?url';
 import gravestoneRoundUrl from '../assets/gravestone-round.glb?url';
 import gravestoneBrokenUrl from '../assets/gravestone-broken.glb?url';
 import cryptUrl from '../assets/crypt-small.glb?url';
 import lanternUrl from '../assets/lantern-glass.glb?url';
 
-// Ghost by Quaternius (poly.pizza, CC0); props/lantern from Kenney's
-// Graveyard Kit (kenney.nl, CC0).
-
-export interface GhostAsset {
-  /** Normalized: height exactly 1, feet at y=0, centered on x/z. */
-  model: THREE.Group;
-  animations: THREE.AnimationClip[];
-}
+// Props/lantern from Kenney's Graveyard Kit (kenney.nl, CC0). The ghost
+// is fully procedural (Creature.ts) — no model asset.
 
 export interface GameAssets {
-  ghost: GhostAsset;
   gravestones: THREE.Group[];
   crypt: THREE.Group;
-  /** Normalized to height 1 like the ghost. */
+  /** Normalized: height exactly 1, feet at y=0, centered on x/z. */
   lantern: THREE.Group;
 }
 
@@ -42,8 +34,7 @@ function normalize(scene: THREE.Group): THREE.Group {
 
 export async function loadGameAssets(): Promise<GameAssets> {
   const loader = new GLTFLoader();
-  const [ghostGltf, cross, round, broken, crypt, lantern] = await Promise.all([
-    loader.loadAsync(ghostUrl),
+  const [cross, round, broken, crypt, lantern] = await Promise.all([
     loader.loadAsync(gravestoneCrossUrl),
     loader.loadAsync(gravestoneRoundUrl),
     loader.loadAsync(gravestoneBrokenUrl),
@@ -52,10 +43,6 @@ export async function loadGameAssets(): Promise<GameAssets> {
   ]);
 
   return {
-    ghost: {
-      model: normalize(ghostGltf.scene),
-      animations: ghostGltf.animations,
-    },
     gravestones: [cross.scene, round.scene, broken.scene],
     crypt: crypt.scene,
     lantern: normalize(lantern.scene),

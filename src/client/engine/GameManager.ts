@@ -32,7 +32,8 @@ const TARGET_Z = 4;
 const SPEED_PENALTY = 0.15;
 const FIREBALL_HIT_RADIUS = 0.75;
 
-const LANES = [-2.2, -1.1, 0, 1.1, 2.2];
+// Must stay inside Creature's X_BOUND (1.4) — the fence line is at x ±2
+const LANES = [-1.3, -0.65, 0, 0.65, 1.3];
 
 export class GameManager {
   private world: World;
@@ -206,14 +207,14 @@ export class GameManager {
   }
 
   private spawnCreature(): void {
-    if (!this.assets) return; // still loading — spawn timer retries
+    // Ghosts are procedural, but hold spawning until the world's kit
+    // props are in — keeps the first reveal cohesive
+    if (!this.assets) return;
     const lane = this.pickLane();
     const spawnZ = SPAWN_Z_MIN + Math.random() * (SPAWN_Z_MAX - SPAWN_Z_MIN);
     const pattern: MovementPattern = this.pickPattern();
 
     const creature = new Creature({
-      model: this.assets.ghost.model,
-      animations: this.assets.ghost.animations,
       speed: this.currentSpeed,
       spawnZ,
       targetZ: TARGET_Z,

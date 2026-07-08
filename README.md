@@ -8,13 +8,13 @@ This project is an entry for Reddit's [**Games with a Hook**](https://redditgame
 
 ## The Game
 
-You are the night watchman. Ghosts rise from the darkness and drift toward your lantern light on unpredictable paths — weaving, zigzagging, flanking from the sides.
+You are the night watchman — and tonight, something not of this world walks the graveyard. Alien entities glide out of the dark on unpredictable paths — weaving, zigzagging, flanking from the sides — their teal bioluminescence the only warning you get.
 
-Your only weapon is fire. **Tap anywhere to hurl a fireball** toward that point. Hit a ghost and it dissolves into embers — your streak climbs. Miss, and your streak shatters. Let a ghost reach you and things get worse — they speed up.
+Your weapon is an alien energy pistol. **Tap anywhere to fire** a bolt toward that point. Hit an alien and it dissolves in a burst of light — your streak climbs. Miss, and your streak shatters. Let one reach you and things get worse — they speed up.
 
-As the 60-second watch progresses, spawn rates increase and ghost movement gets trickier. Every throw counts: spraying fireballs into the dark is the fastest way to lose your streak.
+As the 60-second watch progresses, spawn rates increase and alien movement gets trickier. Every shot counts: spraying bolts into the dark is the fastest way to lose your streak.
 
-One lantern. One flame. How long can you keep the streak alive?
+One pistol. One watch. How long can you keep the streak alive?
 
 ## Tech Stack
 
