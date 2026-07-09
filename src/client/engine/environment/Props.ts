@@ -131,10 +131,10 @@ function makeMistTexture(): THREE.CanvasTexture {
 }
 
 // Shared cutout material for everything that reads as a black paper-cut
-// layer (kit models, stones, rocks, mounds). Never mutated, never disposed.
+// layer (crystals, monoliths, rocks). Never mutated, never disposed.
 const SILHOUETTE_MAT = new THREE.MeshBasicMaterial({ color: 0x05060c });
 
-interface StoneSpot {
+interface CrystalSpot {
   x: number;
   z: number;
   ry: number;
@@ -143,28 +143,29 @@ interface StoneSpot {
 }
 
 /**
- * Static graveyard decor: silhouetted dead trees, gravestones with dirt
- * mounds, grass tufts, rocks, drifting ground mist, fireflies. Each
- * scatter (trees, stones, mounds, rocks, grass) merges into a single
- * geometry — the whole class costs ~9 draw calls.
+ * Static alien-field decor: silhouetted dead trees, angular crystal-shard
+ * growths, grass tufts, rocks, drifting ground mist, teal spore motes.
+ * Each scatter (trees, crystals, rocks, grass) merges into a single
+ * geometry — the whole class costs ~8 draw calls. Everything is a black
+ * cutout per the art direction; the spores are the only glowing element
+ * and share the aliens' teal.
  */
 export class Props {
   readonly group: THREE.Group;
   private mistPlanes: THREE.Mesh[] = [];
   private smokeClouds: THREE.Mesh[] = [];
   private smokeDrift: { x: number; speed: number; phase: number }[] = [];
-  private fireflyMat: THREE.ShaderMaterial;
-  private proceduralStones: THREE.Mesh | null = null;
+  private sporeMat: THREE.ShaderMaterial;
   /** Shared with the grass material's injected wind shader. */
   private grassTime = { value: 0 };
-  /** Grave placements shared by the procedural stand-ins, the kit models, and the dirt mounds. */
-  private stoneSpots: StoneSpot[] = [];
+  /** Crystal-cluster placements flanking the path (former grave spots). */
+  private crystalSpots: CrystalSpot[] = [];
 
   constructor() {
     this.group = new THREE.Group();
     for (let i = 0; i < 10; i++) {
       const side = i % 2 === 0 ? -1 : 1;
-      this.stoneSpots.push({
+      this.crystalSpots.push({
         x: side * (2.6 + Math.random() * 1.1),
         z: -2 - Math.random() * 26,
         ry: (Math.random() - 0.5) * 0.9,
@@ -173,13 +174,12 @@ export class Props {
       });
     }
     this.buildTrees();
-    this.buildGravestones();
-    this.buildGraveMounds();
+    this.buildCrystals();
     this.buildRocks();
     this.buildGrass();
     this.buildMist();
     this.buildSmoke();
-    this.fireflyMat = this.buildFireflies();
+    this.sporeMat = this.buildSpores();
   }
 
   // ─── DEAD TREES (one merged geometry, pure silhouette) ────────────
@@ -228,104 +228,38 @@ export class Props {
     this.group.add(trees);
   }
 
-  /**
-   * Replace the procedural gravestone slabs with Kenney kit models and
-   * add crypts. Every kit mesh gets the shared silhouette material — the
-   * cutout treatment is what unifies the kit's cartoony look with the
-   * rest of the scene. Original kit materials stay untouched on the
-   * templates; nothing extra needs disposing.
-   */
-  installKit(assets: { gravestones: THREE.Group[]; crypt: THREE.Group }): void {
-    if (this.proceduralStones) {
-      this.group.remove(this.proceduralStones);
-      this.proceduralStones.geometry.dispose();
-      (this.proceduralStones.material as THREE.Material).dispose();
-      this.proceduralStones = null;
-    }
-
-    const toSilhouette = (root: THREE.Object3D): void => {
-      root.traverse((child) => {
-        if (child instanceof THREE.Mesh) child.material = SILHOUETTE_MAT;
-      });
-    };
-
-    for (let i = 0; i < this.stoneSpots.length; i++) {
-      const spot = this.stoneSpots[i]!;
-      const variant = assets.gravestones[i % assets.gravestones.length]!;
-      const stone = variant.clone(true);
-      toSilhouette(stone);
-      stone.position.set(spot.x, -0.04, spot.z);
-      stone.rotation.y = spot.ry;
-      stone.rotation.z = spot.rz;
-      stone.scale.setScalar(spot.s);
-      this.group.add(stone);
-    }
-
-    for (const [x, z, ry] of [
-      [-6.5, -16, 0.9],
-      [6.8, -24, -1.1],
-    ] as const) {
-      const crypt = assets.crypt.clone(true);
-      toSilhouette(crypt);
-      crypt.position.set(x, -0.04, z);
-      crypt.rotation.y = ry;
-      crypt.scale.setScalar(1.6);
-      this.group.add(crypt);
-    }
-  }
-
-  // ─── GRAVESTONES (procedural stand-ins until the kit loads) ───────
-  private buildGravestones(): void {
+  // ─── CRYSTAL SHARDS (alien growths flanking the path) ─────────────
+  // Each spot grows a cluster: one tall tilted spike plus smaller shards
+  // leaning out around it — angular where the graveyard was rounded.
+  private buildCrystals(): void {
     const geos: THREE.BufferGeometry[] = [];
-    for (const spot of this.stoneSpots) {
-      const w = (0.4 + Math.random() * 0.2) * spot.s;
-      const h = (0.5 + Math.random() * 0.35) * spot.s;
-
-      const slab = new THREE.BoxGeometry(w, h, 0.1);
-      slab.translate(0, h / 2, 0);
-      const arch = new THREE.CylinderGeometry(w / 2, w / 2, 0.1, 10, 1, false, 0, Math.PI);
-      arch.rotateX(-Math.PI / 2);
-      arch.translate(0, h, 0);
-
-      const m = new THREE.Matrix4()
-        .makeTranslation(spot.x, -0.05, spot.z)
-        .multiply(new THREE.Matrix4().makeRotationY(spot.ry))
-        .multiply(new THREE.Matrix4().makeRotationZ(spot.rz));
-      slab.applyMatrix4(m);
-      arch.applyMatrix4(m);
-      geos.push(slab, arch);
+    for (const spot of this.crystalSpots) {
+      const shards = 3 + Math.floor(Math.random() * 3);
+      for (let s = 0; s < shards; s++) {
+        const main = s === 0;
+        const h = (main ? 0.9 + Math.random() * 0.8 : 0.3 + Math.random() * 0.4) * spot.s;
+        const r = h * (0.13 + Math.random() * 0.05);
+        // 5-sided cone reads as a faceted shard in silhouette
+        const shard = new THREE.ConeGeometry(r, h, 5);
+        shard.translate(0, h / 2, 0);
+        const m = new THREE.Matrix4()
+          .makeTranslation(
+            spot.x + (main ? 0 : (Math.random() - 0.5) * 0.6),
+            -0.04,
+            spot.z + (main ? 0 : (Math.random() - 0.5) * 0.6)
+          )
+          .multiply(new THREE.Matrix4().makeRotationY(spot.ry + Math.random() * Math.PI * 2))
+          .multiply(
+            new THREE.Matrix4().makeRotationZ(spot.rz + (Math.random() - 0.5) * (main ? 0.3 : 0.7))
+          );
+        shard.applyMatrix4(m);
+        geos.push(shard);
+      }
     }
     const merged = mergeGeometries(geos);
     for (const g of geos) g.dispose();
-    // owned clone — installKit() disposes it when the kit swaps in
-    this.proceduralStones = new THREE.Mesh(merged, SILHOUETTE_MAT.clone());
-    this.group.add(this.proceduralStones);
-  }
-
-  // ─── GRAVE MOUNDS (squashed spheres in front of each stone) ───────
-  // Persist when the kit swaps in: the spots are shared, so the mound
-  // stays aligned under whichever stone model ends up there.
-  private buildGraveMounds(): void {
-    const geos: THREE.BufferGeometry[] = [];
-    for (const spot of this.stoneSpots) {
-      const geo = new THREE.SphereGeometry(1, 8, 6);
-      // stones face +z (toward the camera); the mound extends that way
-      const m = new THREE.Matrix4().compose(
-        new THREE.Vector3(
-          spot.x + Math.sin(spot.ry) * 0.6 * spot.s,
-          0,
-          spot.z + Math.cos(spot.ry) * 0.6 * spot.s
-        ),
-        new THREE.Quaternion().setFromEuler(new THREE.Euler(0, spot.ry, 0)),
-        new THREE.Vector3(0.34, 0.13, 0.62).multiplyScalar(spot.s)
-      );
-      geo.applyMatrix4(m);
-      geos.push(geo);
-    }
-    const merged = mergeGeometries(geos);
-    for (const g of geos) g.dispose();
-    const mounds = new THREE.Mesh(merged, SILHOUETTE_MAT);
-    this.group.add(mounds);
+    const crystals = new THREE.Mesh(merged, SILHOUETTE_MAT);
+    this.group.add(crystals);
   }
 
   // ─── ROCKS (boulders off the path, pebbles hugging its edges) ─────
@@ -444,7 +378,7 @@ export class Props {
 
   // ─── SMOKE CLOUDS (occluding — the difficulty mechanic) ───────────
   // Unlike the additive ground mist, these use normal alpha blending
-  // and draw after ghosts/particles (renderOrder 3), so a ghost drifting
+  // and draw after aliens/particles (renderOrder 3), so an alien drifting
   // behind one is genuinely obscured, eye glow included.
   private buildSmoke(): void {
     const tex = makeSmokeTexture();
@@ -471,8 +405,8 @@ export class Props {
     }
   }
 
-  // ─── FIREFLIES (static Points, animated in vertex shader) ─────────
-  private buildFireflies(): THREE.ShaderMaterial {
+  // ─── SPORES (drifting alien motes, animated in vertex shader) ─────
+  private buildSpores(): THREE.ShaderMaterial {
     const COUNT = 30;
     const positions = new Float32Array(COUNT * 3);
     const phases = new Float32Array(COUNT);
@@ -509,8 +443,9 @@ export class Props {
         void main() {
           float d = length(gl_PointCoord - 0.5);
           float a = smoothstep(0.5, 0.05, d) * vAlpha;
-          // slightly >1 green-gold so bright blinks catch a whisper of bloom
-          gl_FragColor = vec4(vec3(0.9, 1.3, 0.45) * a, a);
+          // slightly >1 teal so bright blinks catch a whisper of bloom —
+          // same color language as the aliens' rims
+          gl_FragColor = vec4(vec3(0.25, 1.25, 0.95) * a, a);
         }
       `,
       blending: THREE.AdditiveBlending,
@@ -525,7 +460,7 @@ export class Props {
   }
 
   update(time: number): void {
-    this.fireflyMat.uniforms.uTime!.value = time;
+    this.sporeMat.uniforms.uTime!.value = time;
     this.grassTime.value = time;
     for (let i = 0; i < this.mistPlanes.length; i++) {
       const mist = this.mistPlanes[i]!;

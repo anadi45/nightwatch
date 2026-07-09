@@ -1,20 +1,21 @@
 import * as THREE from 'three';
 import type { ParticleSystem } from './effects/Particles';
 
-const SPEED = 16;
-const MAX_AGE = 1.8;
+const SPEED = 26;
+const MAX_AGE = 1.2;
 
 // Bolt proportions — local +z is the flight axis, meshes stretch along it.
-const CORE_STRETCH = 3.8;
-const SHEATH_STRETCH = 3.0;
-const HALO_STRETCH = 2.0;
-const HELIX_RADIUS = 0.09;
-const HELIX_SPEED = 26;
+// Slimmer and hotter than the first pass: a plasma round, not a fireball.
+const CORE_STRETCH = 4.4;
+const SHEATH_STRETCH = 3.4;
+const HALO_STRETCH = 2.2;
+const HELIX_RADIUS = 0.06;
+const HELIX_SPEED = 34;
 
 // shared static resources — never mutated, never disposed per-instance
-const CORE_GEO = new THREE.SphereGeometry(0.05, 10, 10);
-const SHEATH_GEO = new THREE.SphereGeometry(0.095, 10, 10);
-const HALO_GEO = new THREE.SphereGeometry(0.19, 8, 8);
+const CORE_GEO = new THREE.SphereGeometry(0.034, 10, 10);
+const SHEATH_GEO = new THREE.SphereGeometry(0.062, 10, 10);
+const HALO_GEO = new THREE.SphereGeometry(0.125, 8, 8);
 const CORE_MAT = new THREE.MeshBasicMaterial({
   color: new THREE.Color(0xccfff2).multiplyScalar(3.0), // white-hot, blooms hard
 });
@@ -121,16 +122,17 @@ export class Fireball {
     // tracer line + twin ion helix
     this.trailTimer -= delta;
     if (this.trailTimer <= 0) {
-      this.trailTimer = 0.018;
+      // faster bolt → tighter spawn interval keeps the trail continuous
+      this.trailTimer = 0.012;
 
       // afterimage hanging on the flight line — reads as a beam from behind
       tmpSpawn.copy(this.mesh.position).addScaledVector(this.dir, -0.12);
       this.fx.spawn(tmpSpawn, {
         color: TRACER_COLOR,
-        life: 0.16,
-        lifeJitter: 0.06,
-        size: 0.07,
-        sizeJitter: 0.02,
+        life: 0.14,
+        lifeJitter: 0.05,
+        size: 0.05,
+        sizeJitter: 0.015,
       });
 
       // two motes coiling around the path, opposite phases
@@ -143,10 +145,10 @@ export class Fireball {
           .addScaledVector(this.up, Math.sin(angle) * HELIX_RADIUS);
         this.fx.spawn(tmpSpawn, {
           color: HELIX_COLOR,
-          life: 0.2,
-          lifeJitter: 0.08,
-          size: 0.04,
-          sizeJitter: 0.015,
+          life: 0.18,
+          lifeJitter: 0.07,
+          size: 0.03,
+          sizeJitter: 0.012,
         });
       }
     }

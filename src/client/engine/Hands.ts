@@ -41,9 +41,8 @@ const FINGERS: FingerSpec[] = [
  * the alien entity's colour language. Both hands grip it: right on the
  * handle, left bracing under the barrel.
  *
- * Public API is unchanged from the lantern/orb version so GameManager
- * doesn't need edits: throwFireball() triggers the recoil + muzzle flash,
- * installLantern() is a no-op, update(delta, time) drives the animation.
+ * throwFireball() triggers the recoil + muzzle flash (the name predates
+ * the pistol); update(delta, time) drives the idle sway and animations.
  */
 export class Hands {
   private camera: THREE.PerspectiveCamera;
@@ -52,7 +51,7 @@ export class Hands {
   private gunRestX = 0;
   private gunRestY = 0;
   private gunRestZ = 0;
-  private gunRestRotX = 0.12;
+  private gunRestRotX = 0.09;
 
   private recoilTimer   = 0;
   private flashTimer    = 0;
@@ -108,7 +107,10 @@ export class Hands {
   // ── GUN + HANDS ASSEMBLY ─────────────────────────────────────────────
   private buildGunAssembly(): THREE.Group {
     const group = new THREE.Group();
-    group.rotation.set(this.gunRestRotX, -0.10, 0.04);
+    // Classic FPS cant: yawed outward so the slide's right flank (with
+    // its energy vent) shows, plus a slight roll so the gun doesn't sit
+    // dead-vertical in frame.
+    group.rotation.set(this.gunRestRotX, 0.30, -0.11);
 
     this.buildGunGeometry(group);
     this.buildHands(group);
@@ -362,10 +364,6 @@ export class Hands {
   }
 
   // ── PUBLIC API ────────────────────────────────────────────────────────
-  /** No-op: gun replaces the lantern so no model swap is needed. */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  installLantern(_template: THREE.Group): void {}
-
   /** Trigger recoil + muzzle flash; GameManager still spawns the Fireball. */
   throwFireball(): void {
     this.recoilTimer  = 0.001;

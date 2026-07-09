@@ -8,7 +8,7 @@ This project is an entry for Reddit's [**Games with a Hook**](https://redditgame
 
 ## The Game
 
-You are the night watchman — and tonight, something not of this world walks the graveyard. Alien entities glide out of the dark on unpredictable paths — weaving, zigzagging, flanking from the sides — their teal bioluminescence the only warning you get.
+You are the night watchman — and tonight, something not of this world has taken the fields. Crystal growths split the earth beneath the dead trees, and alien entities glide out of the dark on unpredictable paths — weaving, zigzagging, flanking from the sides — their teal bioluminescence the only warning you get.
 
 Your weapon is an alien energy pistol. **Tap anywhere to fire** a bolt toward that point. Hit an alien and it dissolves in a burst of light — your streak climbs. Miss, and your streak shatters. Let one reach you and things get worse — they speed up.
 
@@ -71,13 +71,12 @@ nightwatch/
 │   │   └── engine/
 │   │       ├── GameManager.ts  # Game loop, bolt firing/collision, scoring
 │   │       ├── Creature.ts     # Alien entity (procedural), movement patterns, dissolve
-│   │       ├── Fireball.ts     # Energy bolt projectile with ion-helix trail
-│   │       ├── assets.ts       # GLTF loading (Kenney Graveyard Kit, CC0)
+│   │       ├── Fireball.ts     # Plasma bolt projectile with ion-helix trail
 │   │       ├── Hands.ts        # First-person two-handed energy pistol
 │   │       ├── World.ts        # Scene, camera, lighting, environment
 │   │       ├── PostFX.ts       # Bloom post-processing (selective via HDR colors)
 │   │       ├── effects/        # Pooled particle system
-│   │       └── environment/    # Night sky, moon, stars, trees, gravestones, mist
+│   │       └── environment/    # Night sky, moon, stars, trees, crystals, mist
 │   ├── server/                 # Backend — runs on Devvit servers
 │   │   ├── index.ts            # Hono app, mounts all routes
 │   │   ├── core/               # Server utilities
@@ -96,7 +95,7 @@ Nightwatch runs as a Devvit Web interactive post with two entrypoints:
 1. **Splash screen** — Rendered inline in the Reddit feed. Shows the game title and a Play button.
 2. **Game scene** — Full Three.js 3D scene in first person. Opens when the user clicks Play.
 
-The player grips a two-handed alien energy pistol in first-person view. Alien entities approach along a dark, foggy graveyard path as near-black silhouettes rimmed in teal bioluminescence, with glowing almond eyes and trailing wisps, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
+The player grips a two-handed alien energy pistol in first-person view. Alien entities approach along a dark, foggy path — flanked by crystal growths — as near-black silhouettes rimmed in teal bioluminescence, with glowing almond eyes and trailing wisps, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
 
 Tap to fire an energy bolt toward that point. It flies straight, so a weaving alien can drift out of its path — lead your shots. A hit dissolves the alien in a burst of teal light and builds your streak; a miss (or an alien reaching you) breaks it. The challenge escalates: aliens that reach you make the rest faster, spawn intervals tighten, and movement patterns become trickier.
 
@@ -130,7 +129,7 @@ git push origin feature/your-feature
 
 ## Credits
 
-- Gravestone, crypt, and lantern models from the [Kenney Graveyard Kit](https://kenney.nl/assets/graveyard-kit) (CC0) — the alien entity and energy pistol are fully procedural
+- All visuals — the alien entity, energy pistol, and environment — are fully procedural. No external model assets are used.
 
 ## License
 

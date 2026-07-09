@@ -4,7 +4,6 @@ import { Creature, MovementPattern } from './Creature.js';
 import { Hands } from './Hands.js';
 import { Fireball } from './Fireball.js';
 import { ParticleSystem } from './effects/Particles.js';
-import { loadGameAssets, GameAssets } from './assets.js';
 
 export type GamePhase = 'ready' | 'playing' | 'ended';
 
@@ -44,7 +43,6 @@ export class GameManager {
   private creatures: Creature[] = [];
   private fireballs: Fireball[] = [];
   private hitCenter = new THREE.Vector3();
-  private assets: GameAssets | null = null;
   private spawnTimer = 0;
   private spawnInterval = 2;
   private lastTime = 0;
@@ -62,12 +60,6 @@ export class GameManager {
     this.fx = new ParticleSystem(300, 0.06);
     this.world.scene.add(this.fx.points);
     this.callbacks = callbacks;
-    // Kenney models load behind the ready screen; spawning waits for them
-    void loadGameAssets().then((assets) => {
-      this.assets = assets;
-      this.world.installKitProps(assets);
-      this.hands.installLantern(assets.lantern);
-    });
     this.state = this.freshState();
     this.lastTime = performance.now();
     this.loop();
@@ -207,9 +199,6 @@ export class GameManager {
   }
 
   private spawnCreature(): void {
-    // Ghosts are procedural, but hold spawning until the world's kit
-    // props are in — keeps the first reveal cohesive
-    if (!this.assets) return;
     const lane = this.pickLane();
     const spawnZ = SPAWN_Z_MIN + Math.random() * (SPAWN_Z_MAX - SPAWN_Z_MIN);
     const pattern: MovementPattern = this.pickPattern();
