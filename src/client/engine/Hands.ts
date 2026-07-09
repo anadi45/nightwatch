@@ -2,20 +2,22 @@ import * as THREE from 'three';
 
 // ── SHARED MATERIALS ──────────────────────────────────────────────────────
 // Gun: dark matte-metal frame with teal energy elements matching the alien rim.
-const SKIN_MAT    = new THREE.MeshStandardMaterial({ color: 0xc98d63, roughness: 0.9 });
-const SLEEVE_MAT  = new THREE.MeshStandardMaterial({ color: 0x231a10, roughness: 1.0 });
+// Hands wear dark leather gloves — bare skin catches the teal lights and
+// glows green, and gloves keep the first-person layer in silhouette language.
+const SKIN_MAT    = new THREE.MeshStandardMaterial({ color: 0x241c14, roughness: 0.95 });
+const SLEEVE_MAT  = new THREE.MeshStandardMaterial({ color: 0x1a130c, roughness: 1.0 });
 const GUN_MAT     = new THREE.MeshStandardMaterial({ color: 0x0d1018, roughness: 0.55, metalness: 0.78 });
 const GUN_SLIDE   = new THREE.MeshStandardMaterial({ color: 0x14181f, roughness: 0.42, metalness: 0.88 });
 // Teal HDR energy elements — bloom threshold is 1.0 so multiplying above it lets the
 // glow bleed without a PointLight on every vent
 const ENERGY_MAT  = new THREE.MeshBasicMaterial({
-  color: new THREE.Color(0x00ffcc).multiplyScalar(2.0),
+  color: new THREE.Color(0x00ffcc).multiplyScalar(1.6),
 });
 const MUZZLE_RING_MAT = new THREE.MeshBasicMaterial({
-  color: new THREE.Color(0x88ffee).multiplyScalar(1.8),
+  color: new THREE.Color(0x88ffee).multiplyScalar(1.5),
   blending: THREE.AdditiveBlending,
   transparent: true,
-  opacity: 0.65,
+  opacity: 0.45,
   depthWrite: false,
 });
 
@@ -66,13 +68,17 @@ export class Hands {
 
     // Muzzle flash — spikes on shoot, decays in FLASH_DURATION seconds.
     // Teal-white so it reads as an energy weapon, not fire.
-    this.muzzleLight = new THREE.PointLight(0x88ffee, 0, 3.5);
+    this.muzzleLight = new THREE.PointLight(0x88ffee, 0, 2.2);
 
     // Persistent teal energy ambient near the player's hands — replaces the
     // warm torch light from the old orb arm (stays within the 3-light budget).
-    this.energyLight = new THREE.PointLight(0x00ddaa, 0.45, 2.8);
+    // Kept dim and short-range so it doesn't tint the gloves/scene green.
+    this.energyLight = new THREE.PointLight(0x00ddaa, 0.15, 1.2);
 
     this.gunGroup = this.buildGunAssembly();
+    // The whole assembly is authored large; scale down so the pistol reads
+    // as a handgun in frame instead of filling the bottom of the screen.
+    this.gunGroup.scale.setScalar(0.55);
     this.layoutGun();
     camera.add(this.gunGroup);
 
@@ -89,9 +95,9 @@ export class Hands {
     const halfH  = Math.tan(fovRad / 2) * Math.abs(z);
     const halfW  = halfH * this.camera.aspect;
 
-    // Classic FPS: gun slightly right of centre, lower third of the frame
-    const x = halfW * 0.28;
-    const y = -halfH * 0.76;
+    // Classic FPS: gun slightly right of centre, tucked into the bottom edge
+    const x = halfW * 0.32;
+    const y = -halfH * 0.86;
 
     this.gunGroup.position.set(x, y, z);
     this.gunRestX = x;
@@ -184,14 +190,14 @@ export class Hands {
     group.add(rail);
 
     // ── Teal energy elements (alien power cell language) ────────────
-    // Side vent strips on the slide
+    // Thin side vent strips on the slide — accents, not floodlights
     for (const sx of [-1, 1]) {
-      const vent = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.010, 0.044), ENERGY_MAT);
+      const vent = new THREE.Mesh(new THREE.BoxGeometry(0.0025, 0.007, 0.036), ENERGY_MAT);
       vent.position.set(sx * 0.012, 0.024, -0.006);
       group.add(vent);
     }
     // Rear core window in the slide (visible from above)
-    const coreWindow = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.003, 0.020), ENERGY_MAT);
+    const coreWindow = new THREE.Mesh(new THREE.BoxGeometry(0.010, 0.002, 0.014), ENERGY_MAT);
     coreWindow.position.set(0, 0.040, 0.046);
     group.add(coreWindow);
     // Small energy indicator on the grip
@@ -233,6 +239,11 @@ export class Hands {
   }
 
   private buildHands(group: THREE.Group): void {
+    // Hands are authored at the same scale as before the pistol existed,
+    // which makes them nearly gun-sized — scale each arm down so the
+    // pistol dominates the composition, not the fingers.
+    const HAND_SCALE = 0.6;
+
     // ── Right hand (dominant): grips the handle ──────────────────────
     const rArm = new THREE.Group();
     this.buildArmBase(rArm);
@@ -240,8 +251,9 @@ export class Hands {
     rHand.position.y = 0.07;
     rHand.rotation.x = -0.52;
     rArm.add(rHand);
-    // Position arm so fist wraps around the grip handle
-    rArm.position.set(0.010, -0.098, 0.054);
+    rArm.scale.setScalar(HAND_SCALE);
+    // Fist wraps the grip handle
+    rArm.position.set(0.004, -0.088, 0.058);
     rArm.rotation.set(-0.88, 0.04, 0.09);
     group.add(rArm);
 
@@ -252,8 +264,9 @@ export class Hands {
     lHand.position.y = 0.07;
     lHand.rotation.x = -0.38;
     lArm.add(lHand);
-    // Position arm so hand cups under the front of the frame
-    lArm.position.set(-0.018, -0.082, -0.082);
+    lArm.scale.setScalar(HAND_SCALE);
+    // Hand cups under the front of the frame
+    lArm.position.set(-0.012, -0.062, -0.070);
     lArm.rotation.set(-0.95, -0.12, -0.09);
     group.add(lArm);
   }
@@ -357,8 +370,8 @@ export class Hands {
   throwFireball(): void {
     this.recoilTimer  = 0.001;
     this.flashTimer   = Hands.FLASH_DURATION;
-    this.muzzleLight.intensity  = 4.0;
-    this.muzzleGlowMat.opacity  = 1.0;
+    this.muzzleLight.intensity  = 2.6;
+    this.muzzleGlowMat.opacity  = 0.85;
   }
 
   update(delta: number, time: number): void {
@@ -370,12 +383,12 @@ export class Hands {
     if (this.flashTimer > 0) {
       this.flashTimer -= delta;
       const fade = Math.max(0, this.flashTimer / Hands.FLASH_DURATION);
-      this.muzzleLight.intensity  = 4.0 * fade;
-      this.muzzleGlowMat.opacity  = fade * 0.88;
+      this.muzzleLight.intensity  = 2.6 * fade;
+      this.muzzleGlowMat.opacity  = fade * 0.85;
     }
 
     // Energy light breathes slightly
-    this.energyLight.intensity = 0.38 + Math.sin(time * 2.1) * 0.07;
+    this.energyLight.intensity = 0.13 + Math.sin(time * 2.1) * 0.03;
 
     // Recoil: brief upward kick that springs back
     if (this.recoilTimer > 0) {

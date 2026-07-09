@@ -153,25 +153,30 @@ export class Sky {
     const moonPos = new THREE.Vector3(8, 13, -44);
     const lookTarget = new THREE.Vector3(0, 2.5, 6);
 
-    // Four layered additive halos (large→small, dim→bright) matching concept art
-    const haloLayers: [number, number][] = [
-      [14.5, 0.028], [10.5, 0.048], [7.2, 0.07], [5.0, 0.10],
-    ];
-    for (const [radius, opacity] of haloLayers) {
-      const mat = new THREE.MeshBasicMaterial({
-        color: 0x8898c8,
-        transparent: true,
-        opacity,
-        blending: THREE.AdditiveBlending,
-        fog: false,
-        depthWrite: false,
-      });
-      const halo = new THREE.Mesh(new THREE.CircleGeometry(radius, 24), mat);
-      halo.position.copy(moonPos);
-      halo.lookAt(lookTarget);
-      halo.renderOrder = -1;
-      this.group.add(halo);
-    }
+    // Single smooth radial-gradient halo — layered flat discs rendered as
+    // visible banded rings; a canvas gradient has no steps.
+    const haloCanvas = document.createElement('canvas');
+    haloCanvas.width = haloCanvas.height = 256;
+    const hctx = haloCanvas.getContext('2d')!;
+    const hgrad = hctx.createRadialGradient(128, 128, 22, 128, 128, 128);
+    hgrad.addColorStop(0.0,  'rgba(150, 172, 224, 0.55)');
+    hgrad.addColorStop(0.25, 'rgba(130, 152, 210, 0.22)');
+    hgrad.addColorStop(0.55, 'rgba(115, 138, 200, 0.08)');
+    hgrad.addColorStop(1.0,  'rgba(110, 132, 195, 0.0)');
+    hctx.fillStyle = hgrad;
+    hctx.fillRect(0, 0, 256, 256);
+    const haloMat = new THREE.MeshBasicMaterial({
+      map: new THREE.CanvasTexture(haloCanvas),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      fog: false,
+      depthWrite: false,
+    });
+    const halo = new THREE.Mesh(new THREE.PlaneGeometry(29, 29), haloMat);
+    halo.position.copy(moonPos);
+    halo.lookAt(lookTarget);
+    halo.renderOrder = -1;
+    this.group.add(halo);
 
     // Disc: radial gradient canvas — bright ivory centre fading to cool slate edge,
     // with subtle maria blotches. Matches concept: #f2f6ff → #8ca8d0.

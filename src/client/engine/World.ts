@@ -38,8 +38,9 @@ export class World {
 
     this.postfx = new PostFX(this.renderer, this.scene, this.camera, w, h);
 
-    // Ambient lifted so the ground and path are readable in gameplay
-    const ambient = new THREE.AmbientLight(0x2a3a5a, 0.75);
+    // Ambient lifted so the ground and path are readable in gameplay —
+    // but not so high the silhouette contrast washes out
+    const ambient = new THREE.AmbientLight(0x2a3a5a, 0.55);
     this.scene.add(ambient);
 
     // Moonlight direction updated to match new moon position (8,13,-44).
@@ -51,7 +52,7 @@ export class World {
 
     // Dim forward fill from above-behind the player — illuminates the
     // ground and approaching aliens without washing out the silhouette look.
-    const fill = new THREE.DirectionalLight(0x3a4d6a, 0.45);
+    const fill = new THREE.DirectionalLight(0x3a4d6a, 0.3);
     fill.position.set(0, 8, 10);
     this.scene.add(fill);
 
@@ -87,7 +88,7 @@ export class World {
       color: 0x10121f,
       roughness: 1,
       emissive: 0x93a7cf,
-      emissiveIntensity: 0.38,
+      emissiveIntensity: 0.26,
       emissiveMap: makeMoonPoolTexture(),
     });
     const ground = new THREE.Mesh(groundGeo, groundMat);
@@ -105,7 +106,7 @@ export class World {
       roughness: 0.8,
       map: pathTex,
       emissive: 0x8fa3c8,
-      emissiveIntensity: 0.3,
+      emissiveIntensity: 0.22,
       emissiveMap: pathTex,
       transparent: true,
       depthWrite: false,

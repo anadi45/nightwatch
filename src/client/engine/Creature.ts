@@ -69,15 +69,15 @@ const ALIEN_HEAD_GEO  = makeAlienHeadGeo();
 const GHOST_TENDRIL_GEO = new THREE.PlaneGeometry(0.06, 0.3, 1, 3);
 const GHOST_AURA_GEO  = new THREE.SphereGeometry(0.35, 8, 8);
 // Eye: sphere scaled on the mesh to a flat almond (scaleX 1.8, scaleY 0.4)
-const EYE_VOID_GEO  = new THREE.SphereGeometry(0.055, 10, 6);
-const EYE_IRIS_GEO  = new THREE.SphereGeometry(0.026, 7, 5);
-const EYE_GLOW_GEO  = new THREE.SphereGeometry(0.088, 8, 6);
+const EYE_VOID_GEO  = new THREE.SphereGeometry(0.060, 10, 6);
+const EYE_IRIS_GEO  = new THREE.SphereGeometry(0.034, 7, 5);
+const EYE_GLOW_GEO  = new THREE.SphereGeometry(0.095, 8, 6);
 const HIT_GEO = new THREE.SphereGeometry(HIT_RADIUS, 6, 6);
 
 const AURA_MAT = new THREE.MeshBasicMaterial({
-  color: new THREE.Color(0x334466).multiplyScalar(1.4),
+  color: new THREE.Color(0x0a4436).multiplyScalar(1.4),
   transparent: true,
-  opacity: 0.09,
+  opacity: 0.08,
   blending: THREE.AdditiveBlending,
   side: THREE.BackSide,
 });
@@ -86,8 +86,11 @@ const HIT_MAT = new THREE.MeshBasicMaterial();
 HIT_MAT.colorWrite = false;
 HIT_MAT.depthWrite = false;
 
-// Fresnel rim + vertex waver. Additive, so fog is done manually as a
-// fade-to-black matching World's FogExp2 (density must stay in sync).
+// Fresnel rim + vertex waver. NORMAL blending with a near-black body —
+// additive made the alien a translucent wash against the pale fog; a solid
+// dark silhouette with a teal rim is what actually pops out there. Fog is
+// manual: the body color mixes toward World's haze color with the same
+// FogExp2 curve (density must stay in sync with World, 0.06).
 const GHOST_FOG_DENSITY = 0.06;
 
 const GHOST_MAT_TEMPLATE = new THREE.ShaderMaterial({
@@ -96,7 +99,8 @@ const GHOST_MAT_TEMPLATE = new THREE.ShaderMaterial({
     uOpacity: { value: 1 },
     uDissolve: { value: 0 },
     uFogDensity: { value: GHOST_FOG_DENSITY },
-    uBaseColor: { value: new THREE.Color(0x223322) },
+    uFogColor: { value: new THREE.Color(0x3d4a68) },
+    uBaseColor: { value: new THREE.Color(0x070d12) },
     // teal bioluminescent rim — crosses the bloom threshold at glancing angles
     uRimColor: { value: new THREE.Color(0x00ddaa) },
   },
@@ -120,6 +124,7 @@ const GHOST_MAT_TEMPLATE = new THREE.ShaderMaterial({
     uniform float uOpacity;
     uniform float uDissolve;
     uniform float uFogDensity;
+    uniform vec3 uFogColor;
     uniform vec3 uBaseColor;
     uniform vec3 uRimColor;
     varying vec3 vNormal;
@@ -128,15 +133,17 @@ const GHOST_MAT_TEMPLATE = new THREE.ShaderMaterial({
     varying float vY;
     void main() {
       float rim = pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewDir))), 2.5);
-      vec3 col = uBaseColor * 0.25 + uRimColor * rim * 2.0;
+      vec3 col = uBaseColor + uRimColor * rim * 2.4;
+      // fade the silhouette into the haze exactly like FogExp2 would
       float fog = exp(-pow(uFogDensity * vDepth, 2.0));
+      col = mix(uFogColor, col, fog);
       // dissolve eats the body from the tail upward
       float dissolve = clamp(1.0 - uDissolve * (0.6 + 0.9 * (1.0 - vY)), 0.0, 1.0);
-      float alpha = uOpacity * fog * dissolve * 0.55;
+      float alpha = uOpacity * dissolve * 0.92;
       gl_FragColor = vec4(col, alpha);
     }
   `,
-  blending: THREE.AdditiveBlending,
+  blending: THREE.NormalBlending,
   transparent: true,
   depthWrite: false,
   side: THREE.DoubleSide,
@@ -232,9 +239,9 @@ export class Creature {
       // Teal iris — HDR boosted so it crosses the bloom threshold
       const irisMat = this.own(
         new THREE.MeshBasicMaterial({
-          color: new THREE.Color(0x00ffcc).multiplyScalar(2.2),
+          color: new THREE.Color(0x00ffcc).multiplyScalar(2.6),
           transparent: true,
-          opacity: 0.80,
+          opacity: 0.90,
           blending: THREE.AdditiveBlending,
         })
       );
@@ -292,12 +299,12 @@ export class Creature {
     this.stateTimer = 0;
     this.aura.visible = false;
 
-    // impact flash — short-lived orange light + blooming glow
-    this.impactLight = new THREE.PointLight(0xffaa44, IMPACT_INTENSITY, 1.4);
+    // impact flash — short-lived teal plasma light + blooming glow
+    this.impactLight = new THREE.PointLight(0x55ffdd, IMPACT_INTENSITY, 1.4);
     this.impactLight.position.set(0, 0.9, 0.2);
     this.mesh.add(this.impactLight);
     const glowMat = new THREE.MeshBasicMaterial({
-      color: new THREE.Color(0xffcc66).multiplyScalar(2.0),
+      color: new THREE.Color(0x99ffe6).multiplyScalar(2.0),
       transparent: true,
       opacity: 0.35,
       blending: THREE.AdditiveBlending,
@@ -474,8 +481,8 @@ export class Creature {
     const pulse = (0.80 + Math.sin(t * 3.2) * 0.20) * flicker;
     // eyeMats layout per eye: [void(0), iris(1), glow(2), void(3), iris(4), glow(5)]
     for (let i = 0; i < this.eyeMats.length; i++) {
-      if (i % 3 === 1) this.eyeMats[i]!.opacity = 0.80 * pulse;
-      if (i % 3 === 2) this.eyeMats[i]!.opacity = 0.10 * pulse;
+      if (i % 3 === 1) this.eyeMats[i]!.opacity = 0.90 * pulse;
+      if (i % 3 === 2) this.eyeMats[i]!.opacity = 0.16 * pulse;
     }
 
     // Trailing wisps shed from the tail
