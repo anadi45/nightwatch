@@ -10,7 +10,7 @@ body {
   width: 100vw;
   height: 100vh;
   font-family: 'Georgia', serif;
-  color: #e8dcc8;
+  color: #d2ece4;
   -webkit-user-select: none;
   user-select: none;
 }
@@ -50,19 +50,19 @@ canvas {
 }
 
 .loader-flame {
-  width: 24px;
-  height: 36px;
-  background: radial-gradient(ellipse at 50% 80%, #f4c430 0%, #ff8800 40%, transparent 70%);
-  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
-  animation: flicker 1.2s ease-in-out infinite alternate;
-  box-shadow: 0 0 30px rgba(244, 196, 48, 0.5), 0 0 60px rgba(244, 196, 48, 0.2);
+  width: 28px;
+  height: 28px;
+  background: radial-gradient(circle at 50% 50%, #ccfff2 0%, #00ddaa 35%, transparent 70%);
+  border-radius: 50%;
+  animation: charge-pulse 1.2s ease-in-out infinite alternate;
+  box-shadow: 0 0 30px rgba(0, 221, 170, 0.5), 0 0 60px rgba(0, 221, 170, 0.2);
   margin-bottom: 1.5rem;
 }
 
-@keyframes flicker {
-  0% { transform: scale(1) rotate(-2deg); opacity: 0.8; }
-  50% { transform: scale(1.1) rotate(1deg); opacity: 1; }
-  100% { transform: scale(0.95) rotate(-1deg); opacity: 0.85; }
+@keyframes charge-pulse {
+  0% { transform: scale(1); opacity: 0.75; }
+  50% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(0.92); opacity: 0.8; }
 }
 
 .loader-text {
@@ -111,7 +111,7 @@ canvas {
 #score-value,
 #streak-value {
   font-size: 1.8rem;
-  color: #f4c430;
+  color: #00ddaa;
 }
 
 #timer-display {
@@ -120,8 +120,8 @@ canvas {
 
 #timer-value {
   font-size: 2.2rem;
-  color: #e8dcc8;
-  text-shadow: 0 0 10px rgba(244, 196, 48, 0.3);
+  color: #d2ece4;
+  text-shadow: 0 0 10px rgba(0, 221, 170, 0.3);
 }
 
 #streak-display {
@@ -153,8 +153,8 @@ canvas {
   font-size: 2.2rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #f4c430;
-  text-shadow: 0 0 20px rgba(244, 196, 48, 0.4);
+  color: #00ddaa;
+  text-shadow: 0 0 20px rgba(0, 221, 170, 0.4);
   margin-bottom: 1rem;
 }
 
@@ -168,8 +168,8 @@ canvas {
 
 .start-btn {
   background: transparent;
-  border: 1px solid #f4c430;
-  color: #f4c430;
+  border: 1px solid #00ddaa;
+  color: #00ddaa;
   padding: 0.8rem 2.5rem;
   font-size: 1.1rem;
   font-family: 'Georgia', serif;
@@ -179,8 +179,8 @@ canvas {
 }
 
 .start-btn:hover {
-  background: rgba(244, 196, 48, 0.15);
-  box-shadow: 0 0 15px rgba(244, 196, 48, 0.3);
+  background: rgba(0, 221, 170, 0.15);
+  box-shadow: 0 0 15px rgba(0, 221, 170, 0.3);
 }
 
 /* End screen stats */
@@ -194,7 +194,7 @@ canvas {
   display: flex;
   justify-content: space-between;
   padding: 0.5rem 0;
-  border-bottom: 1px solid rgba(232, 220, 200, 0.1);
+  border-bottom: 1px solid rgba(210, 236, 228, 0.12);
 }
 
 .stat-label {
@@ -203,7 +203,7 @@ canvas {
 }
 
 .stat-row span:last-child {
-  color: #f4c430;
+  color: #00ddaa;
   font-size: 1.1rem;
 }
 

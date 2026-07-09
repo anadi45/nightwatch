@@ -69,11 +69,11 @@ nightwatch/
 │   │   ├── splash.*            # Title screen (inline in feed)
 │   │   ├── game.*              # Three.js game scene + HUD + loader
 │   │   └── engine/
-│   │       ├── GameManager.ts  # Game loop, fireball throwing/collision, scoring
-│   │       ├── Creature.ts     # Ghost (Kenney model), movement patterns, dissolve
-│   │       ├── Fireball.ts     # Thrown projectile with ember trail
+│   │       ├── GameManager.ts  # Game loop, bolt firing/collision, scoring
+│   │       ├── Creature.ts     # Alien entity (procedural), movement patterns, dissolve
+│   │       ├── Fireball.ts     # Energy bolt projectile with ion-helix trail
 │   │       ├── assets.ts       # GLTF loading (Kenney Graveyard Kit, CC0)
-│   │       ├── Hands.ts        # First-person lantern + fire orb, flame shaders
+│   │       ├── Hands.ts        # First-person two-handed energy pistol
 │   │       ├── World.ts        # Scene, camera, lighting, environment
 │   │       ├── PostFX.ts       # Bloom post-processing (selective via HDR colors)
 │   │       ├── effects/        # Pooled particle system
@@ -96,9 +96,9 @@ Nightwatch runs as a Devvit Web interactive post with two entrypoints:
 1. **Splash screen** — Rendered inline in the Reddit feed. Shows the game title and a Play button.
 2. **Game scene** — Full Three.js 3D scene in first person. Opens when the user clicks Play.
 
-The player holds a glowing lantern (left hand) and cradles a conjured fireball (right hand) in first-person view. Ghosts approach along a dark, foggy graveyard path as translucent specters with trailing wisps, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
+The player grips a two-handed alien energy pistol in first-person view. Alien entities approach along a dark, foggy graveyard path as near-black silhouettes rimmed in teal bioluminescence, with glowing almond eyes and trailing wisps, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
 
-Tap to throw the fireball toward that point. It flies straight, so a weaving ghost can drift out of its path — lead your shots. A hit dissolves the ghost into rising embers and builds your streak; a miss (or a ghost reaching you) breaks it. The challenge escalates: ghosts that reach you make the rest faster, spawn intervals tighten, and movement patterns become trickier.
+Tap to fire an energy bolt toward that point. It flies straight, so a weaving alien can drift out of its path — lead your shots. A hit dissolves the alien in a burst of teal light and builds your streak; a miss (or an alien reaching you) breaks it. The challenge escalates: aliens that reach you make the rest faster, spawn intervals tighten, and movement patterns become trickier.
 
 The client communicates with the Devvit server via API routes (`/api/*`). The server handles game state persistence, menu actions for moderators, and app lifecycle events.
 
@@ -130,8 +130,7 @@ git push origin feature/your-feature
 
 ## Credits
 
-- Ghost model by [Quaternius](https://poly.pizza/m/Iip30bDHmu) (CC0)
-- Gravestone, crypt, and lantern models from the [Kenney Graveyard Kit](https://kenney.nl/assets/graveyard-kit) (CC0)
+- Gravestone, crypt, and lantern models from the [Kenney Graveyard Kit](https://kenney.nl/assets/graveyard-kit) (CC0) — the alien entity and energy pistol are fully procedural
 
 ## License
 
