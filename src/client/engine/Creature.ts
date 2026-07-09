@@ -20,7 +20,7 @@ const IMPACT_DURATION = 0.4;
 const IMPACT_INTENSITY = 4;
 const HIT_RADIUS = 0.5;
 // Ghosts never cross the fence line (posts at x ±2; margin covers the
-// ~0.5 half-width of the wraith so even sleeves/tendrils stay inside)
+// ~0.5 half-width of the alien so even splayed tentacles stay inside)
 const X_BOUND = 1.4;
 
 // HDR particle colors (>1 blooms)
@@ -28,45 +28,31 @@ const GHOST_BURST_COLOR = new THREE.Color(0x00ffcc).multiplyScalar(2.0);
 const GHOST_WISP_COLOR  = new THREE.Color(0x007755).multiplyScalar(1.0);
 
 // ─── SHARED STATIC RESOURCES (never mutated, never disposed here) ─────
-// Fully procedural alien entity. Shroud body is a lathe profile; head is a
-// separate lathe with a massive ovoid cranium pinching to a tiny pointed chin.
-function makeGhostBodyGeo(): THREE.LatheGeometry {
+// Fully procedural alien entity: a floating octopus/jellyfish thing — a
+// bulbous bell (lathe) with seven tapered tentacles hanging beneath it.
+// Bell local space: y=0 at the opening lip, crown at y=0.75.
+function makeBellGeo(): THREE.LatheGeometry {
   const pts: THREE.Vector2[] = [];
-  const seg = 12;
+  const seg = 16;
   for (let i = 0; i <= seg; i++) {
     const t = i / seg;
-    const y = t * 1.6;
+    const y = t * 0.75;
     let r: number;
-    if (t < 0.15) r = 0.2 * Math.sqrt(t / 0.15);
-    else if (t < 0.4) r = 0.2 - (t - 0.15) * 0.15;
-    else if (t < 0.7) r = 0.16 + Math.sin(((t - 0.4) * Math.PI) / 0.3) * 0.04;
-    else r = 0.2 * (1 - (t - 0.7) / 0.3);
-    pts.push(new THREE.Vector2(Math.max(0.01, r), y));
-  }
-  return new THREE.LatheGeometry(pts, 10);
-}
-
-// Grey-alien cranium: tiny chin at y=0, flares to wide dome, rounds to crown at y=0.68.
-function makeAlienHeadGeo(): THREE.LatheGeometry {
-  const pts: THREE.Vector2[] = [];
-  const seg = 18;
-  for (let i = 0; i <= seg; i++) {
-    const t = i / seg;
-    const y = t * 0.68;
-    let r: number;
-    if (t < 0.10)      r = 0.02 * (t / 0.10);
-    else if (t < 0.30) r = 0.02 + 0.12 * ((t - 0.10) / 0.20);
-    else if (t < 0.55) r = 0.14 + 0.14 * ((t - 0.30) / 0.25);
-    else if (t < 0.80) r = 0.28 - 0.04 * ((t - 0.55) / 0.25);
-    else               r = 0.24 * (1 - (t - 0.80) / 0.20);
-    pts.push(new THREE.Vector2(Math.max(0.003, r), y));
+    if (t < 0.12)      r = 0.24 + 0.05 * (t / 0.12);                                  // lip flares out
+    else if (t < 0.45) r = 0.29 + 0.05 * Math.sin(((t - 0.12) / 0.33) * Math.PI / 2); // bulge to 0.34
+    else if (t < 0.85) r = 0.34 - 0.14 * ((t - 0.45) / 0.40);                         // taper upward
+    else               r = 0.20 * Math.cos(((t - 0.85) / 0.15) * Math.PI / 2);        // rounded crown
+    pts.push(new THREE.Vector2(Math.max(0.004, r), y));
   }
   return new THREE.LatheGeometry(pts, 14);
 }
 
-const GHOST_BODY_GEO  = makeGhostBodyGeo();
-const ALIEN_HEAD_GEO  = makeAlienHeadGeo();
-const GHOST_TENDRIL_GEO = new THREE.PlaneGeometry(0.06, 0.3, 1, 3);
+const BELL_GEO = makeBellGeo();
+// Tapered tentacle hanging from its origin: thick at the bell lip, whip-thin
+// at the tip. Height segments matter — the shader's sway bends the shaft.
+const TENTACLE_GEO = new THREE.CylinderGeometry(0.030, 0.005, 0.78, 5, 8);
+TENTACLE_GEO.translate(0, -0.39, 0);
+const CORE_GEO = new THREE.SphereGeometry(0.10, 8, 8);
 const GHOST_AURA_GEO  = new THREE.SphereGeometry(0.35, 8, 8);
 // Eye: sphere scaled on the mesh to a flat almond (scaleX 1.8, scaleY 0.4)
 const EYE_VOID_GEO  = new THREE.SphereGeometry(0.060, 10, 6);
@@ -103,15 +89,24 @@ const GHOST_MAT_TEMPLATE = new THREE.ShaderMaterial({
     uBaseColor: { value: new THREE.Color(0x070d12) },
     // teal bioluminescent rim — crosses the bloom threshold at glancing angles
     uRimColor: { value: new THREE.Color(0x00ddaa) },
+    // lateral undulation, weighted toward negative-y tips — 0 for the bell,
+    // raised on the tentacle material clone so the shafts actually writhe
+    uSway: { value: 0 },
   },
   vertexShader: /* glsl */ `
     uniform float uTime;
+    uniform float uSway;
     varying vec3 vNormal;
     varying vec3 vViewDir;
     varying float vDepth;
     varying float vY;
     void main() {
       vec3 p = position + normal * sin(position.y * 6.0 + uTime * 3.0) * 0.03;
+      // tentacle writhe: tips (most negative local y) sway hardest
+      float swayF = clamp(-position.y * 1.4, 0.0, 1.0);
+      swayF *= swayF;
+      p.x += sin(uTime * 2.3 + position.y * 4.5) * uSway * swayF;
+      p.z += cos(uTime * 1.7 + position.y * 3.5) * uSway * swayF;
       vec4 mv = modelViewMatrix * vec4(p, 1.0);
       vNormal = normalize(normalMatrix * normal);
       vViewDir = normalize(-mv.xyz);
@@ -176,9 +171,15 @@ export class Creature {
   private fadeBaseOpacities: number[] = [];
 
   private ghostMat: THREE.ShaderMaterial;
+  private tentacleMat: THREE.ShaderMaterial;
+  private coreMat: THREE.MeshBasicMaterial;
   private eyeMats: THREE.MeshBasicMaterial[] = [];
-  private head: THREE.Mesh;
-  private ragPanels: THREE.Mesh[] = [];
+  private bell: THREE.Mesh;
+  private tentacles: THREE.Mesh[] = [];
+  private tentaclePhases: number[] = [];
+  /** Static outward splay per tentacle — sway in animate() adds on top. */
+  private tentacleBaseRx: number[] = [];
+  private tentacleBaseRz: number[] = [];
   private aura: THREE.Mesh;
   private wispTimer = 0;
   private impactLight: THREE.PointLight | null = null;
@@ -202,29 +203,55 @@ export class Creature {
       X_BOUND - this.weaveAmplitude
     );
 
-    // ── body: shroud + head + reaching arms + tail tendrils, all in the
-    // per-instance fresnel material (cloning shares the compiled program)
+    // ── body: bell + tentacles + inner core, fresnel material per part
+    // group (cloning shares the compiled program; two clones so the
+    // tentacles get a raised uSway while the bell stays becalmed)
     this.ghostMat = this.own(GHOST_MAT_TEMPLATE.clone());
+    this.tentacleMat = this.own(GHOST_MAT_TEMPLATE.clone());
+    this.tentacleMat.uniforms.uSway!.value = 0.09;
 
-    const body = new THREE.Mesh(GHOST_BODY_GEO, this.ghostMat);
-    this.mesh.add(body);
+    // Bell floats with its lip at y=0.88, crown at y=1.63
+    this.bell = new THREE.Mesh(BELL_GEO, this.ghostMat);
+    this.bell.position.y = 0.88;
+    this.mesh.add(this.bell);
 
-    // Alien cranium lathe — chin at y=0.94, crown at y=1.62
-    this.head = new THREE.Mesh(ALIEN_HEAD_GEO, this.ghostMat);
-    this.head.position.y = 0.94;
-    this.mesh.add(this.head);
-
-    for (let i = 0; i < 3; i++) {
-      const tendril = new THREE.Mesh(GHOST_TENDRIL_GEO, this.ghostMat);
-      const angle = (i / 3) * Math.PI * 2;
-      tendril.position.set(Math.cos(angle) * 0.08, 0.15, Math.sin(angle) * 0.08);
-      tendril.rotation.y = angle;
-      this.ragPanels.push(tendril);
-      this.mesh.add(tendril);
+    // Seven tentacles hanging from a ring just inside the bell lip,
+    // varied in length and starting angle so they never read as a brush
+    for (let i = 0; i < 7; i++) {
+      const angle = (i / 7) * Math.PI * 2 + Math.random() * 0.4;
+      const tentacle = new THREE.Mesh(TENTACLE_GEO, this.tentacleMat);
+      tentacle.position.set(Math.cos(angle) * 0.16, 0.90, Math.sin(angle) * 0.16);
+      tentacle.rotation.y = Math.random() * Math.PI * 2;
+      // slight outward splay from the ring (reapplied under the sway)
+      const baseRx = Math.sin(angle) * 0.14;
+      const baseRz = -Math.cos(angle) * 0.14;
+      tentacle.rotation.x = baseRx;
+      tentacle.rotation.z = baseRz;
+      tentacle.scale.y = 0.8 + Math.random() * 0.35;
+      this.tentacles.push(tentacle);
+      this.tentaclePhases.push(Math.random() * Math.PI * 2);
+      this.tentacleBaseRx.push(baseRx);
+      this.tentacleBaseRz.push(baseRz);
+      this.mesh.add(tentacle);
     }
 
+    // Glowing inner core, visible through the bell as a diffuse heart —
+    // pulses in animate() in time with the bell's breathing
+    this.coreMat = this.own(
+      new THREE.MeshBasicMaterial({
+        color: new THREE.Color(0x00ffcc).multiplyScalar(1.8),
+        transparent: true,
+        opacity: 0.30,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      })
+    );
+    const core = new THREE.Mesh(CORE_GEO, this.coreMat);
+    core.position.y = 1.12;
+    this.mesh.add(core);
+
     // ── Almond eyes: flat ellipsoid (scaleX wide, scaleY thin) with teal iris glow.
-    // Eye center sits in face zone: y≈1.23, x=±0.10, z=0.22 (forward on face).
+    // Eye center sits on the bell front: y≈1.22, x=±0.12, z=0.30.
     for (const sx of [-1, 1]) {
       // Void black shell
       const voidMat = this.own(
@@ -233,7 +260,7 @@ export class Creature {
       this.eyeMats.push(voidMat);
       const eyeVoid = new THREE.Mesh(EYE_VOID_GEO, voidMat);
       eyeVoid.scale.set(1.8, 0.42, 1.0);
-      eyeVoid.position.set(sx * 0.10, 1.23, 0.22);
+      eyeVoid.position.set(sx * 0.12, 1.22, 0.30);
       this.mesh.add(eyeVoid);
 
       // Teal iris — HDR boosted so it crosses the bloom threshold
@@ -248,7 +275,7 @@ export class Creature {
       this.eyeMats.push(irisMat);
       const iris = new THREE.Mesh(EYE_IRIS_GEO, irisMat);
       iris.scale.set(1.6, 0.5, 1.0);
-      iris.position.set(sx * 0.10, 1.23, 0.23);
+      iris.position.set(sx * 0.12, 1.22, 0.31);
       this.mesh.add(iris);
 
       // Outer additive glow shell
@@ -263,18 +290,19 @@ export class Creature {
       this.eyeMats.push(glowMat);
       const glow = new THREE.Mesh(EYE_GLOW_GEO, glowMat);
       glow.scale.set(1.8, 0.5, 1.0);
-      glow.position.set(sx * 0.10, 1.23, 0.21);
+      glow.position.set(sx * 0.12, 1.22, 0.29);
       this.mesh.add(glow);
     }
 
     // Additive glow aura (shared material — hidden on death, never faded)
     this.aura = new THREE.Mesh(GHOST_AURA_GEO, AURA_MAT);
-    this.aura.position.y = 1.0;
+    this.aura.position.y = 1.15;
     this.aura.scale.setScalar(2);
     this.mesh.add(this.aura);
 
+    // Centered on the visual mass: bell 0.88–1.63, tentacles below
     const hit = new THREE.Mesh(HIT_GEO, HIT_MAT);
-    hit.position.y = 0.85;
+    hit.position.y = 0.95;
     this.mesh.add(hit);
 
     this.mesh.position.set(this.baseX, 0, config.spawnZ);
@@ -285,9 +313,9 @@ export class Creature {
     return mat;
   }
 
-  /** World-space center of the hittable body. */
+  /** World-space center of the hittable body (must match the hit mesh y). */
   getHitCenter(target: THREE.Vector3): THREE.Vector3 {
-    return target.copy(this.mesh.position).add(new THREE.Vector3(0, 0.85, 0));
+    return target.copy(this.mesh.position).add(new THREE.Vector3(0, 0.95, 0));
   }
 
   // ─── PUBLIC API ───────────────────────────────────────────────────
@@ -369,6 +397,7 @@ export class Creature {
 
     this.updateImpact(delta);
     this.ghostMat.uniforms.uTime!.value = t;
+    this.tentacleMat.uniforms.uTime!.value = t;
 
     switch (this.creatureState) {
       case 'disintegrating':
@@ -417,10 +446,12 @@ export class Creature {
     }
     const p = this.stateTimer / DISINTEGRATE_DURATION;
     this.ghostMat.uniforms.uDissolve!.value = p;
-    // collapse toward the head as the body dissolves
+    this.tentacleMat.uniforms.uDissolve!.value = p;
+    // collapse toward the bell as the body dissolves
     const s = 1 - p * 0.45;
     this.mesh.scale.set(s, 1 - p * 0.2, s);
     for (const mat of this.eyeMats) mat.opacity *= (1 - p);
+    this.coreMat.opacity *= (1 - p);
   }
 
   private updateFading(delta: number): void {
@@ -434,6 +465,7 @@ export class Creature {
       this.ownedMaterials[i]!.opacity = (this.fadeBaseOpacities[i] ?? 1) * fade;
     }
     this.ghostMat.uniforms.uOpacity!.value = fade;
+    this.tentacleMat.uniforms.uOpacity!.value = fade;
   }
 
   // ─── MOVEMENT ─────────────────────────────────────────────────────
@@ -467,13 +499,21 @@ export class Creature {
     this.mesh.position.x += Math.sin(t * 2.2) * 0.002;
     this.mesh.rotation.y = Math.sin(t * 1.0) * 0.08;
 
-    // Head tilts slowly
-    this.head.rotation.z = Math.sin(t * 0.9) * 0.08;
+    // Bell breathes like a jellyfish propelling itself — widens as it
+    // flattens, narrows as it stretches — with a slow ponderous tilt
+    const breath = Math.sin(t * 2.6) * 0.05;
+    this.bell.scale.set(1 + breath, 1 - breath * 0.8, 1 + breath);
+    this.bell.rotation.z = Math.sin(t * 0.9) * 0.06;
 
-    // Tail tendrils sway
-    for (let i = 0; i < this.ragPanels.length; i++) {
-      this.ragPanels[i]!.rotation.x = Math.sin(t * 1.5 + i * 1.1) * 0.25;
-      this.ragPanels[i]!.rotation.z = Math.cos(t * 1.2 + i * 0.8) * 0.1;
+    // Core glow pulses in time with the breathing
+    this.coreMat.opacity = 0.28 + Math.sin(t * 2.6 + 0.6) * 0.12;
+
+    // Tentacle roots sway out of phase (the shader writhes the shafts)
+    for (let i = 0; i < this.tentacles.length; i++) {
+      const tent = this.tentacles[i]!;
+      const phase = this.tentaclePhases[i]!;
+      tent.rotation.x = this.tentacleBaseRx[i]! + Math.sin(t * 1.6 + phase) * 0.18;
+      tent.rotation.z = this.tentacleBaseRz[i]! + Math.cos(t * 1.3 + phase * 1.4) * 0.16;
     }
 
     // Pulsing teal iris — animate only iris (index 1,4) and glow (index 2,5) mats
@@ -485,14 +525,14 @@ export class Creature {
       if (i % 3 === 2) this.eyeMats[i]!.opacity = 0.16 * pulse;
     }
 
-    // Trailing wisps shed from the tail
+    // Trailing wisps shed from around the tentacle tips
     if (this.fx) {
       this.wispTimer -= delta;
       if (this.wispTimer <= 0) {
         this.wispTimer = 0.1 + Math.random() * 0.12;
         const p = this.mesh.position.clone();
-        p.x += (Math.random() - 0.5) * 0.25;
-        p.y += 0.25 + Math.random() * 0.3;
+        p.x += (Math.random() - 0.5) * 0.3;
+        p.y += 0.15 + Math.random() * 0.35;
         this.fx.spawn(p, {
           color: GHOST_WISP_COLOR,
           velocity: new THREE.Vector3(0, 0.35, 0.2),

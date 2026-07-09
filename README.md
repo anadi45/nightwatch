@@ -95,7 +95,7 @@ Nightwatch runs as a Devvit Web interactive post with two entrypoints:
 1. **Splash screen** — Rendered inline in the Reddit feed. Shows the game title and a Play button.
 2. **Game scene** — Full Three.js 3D scene in first person. Opens when the user clicks Play.
 
-The player grips a two-handed alien energy pistol in first-person view. Alien entities approach along a dark, foggy path — flanked by crystal growths — as near-black silhouettes rimmed in teal bioluminescence, with glowing almond eyes and trailing wisps, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
+The player grips a two-handed alien energy pistol in first-person view. Alien entities — floating octopus-like things with a breathing bell and seven writhing tentacles — approach along a dark, foggy path flanked by crystal growths, as near-black silhouettes rimmed in teal bioluminescence with glowing almond eyes, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
 
 Tap to fire an energy bolt toward that point. It flies straight, so a weaving alien can drift out of its path — lead your shots. A hit dissolves the alien in a burst of teal light and builds your streak; a miss (or an alien reaching you) breaks it. The challenge escalates: aliens that reach you make the rest faster, spawn intervals tighten, and movement patterns become trickier.
 
