@@ -254,8 +254,9 @@ export class Hands {
     rHand.rotation.x = -0.52;
     rArm.add(rHand);
     rArm.scale.setScalar(HAND_SCALE);
-    // Fist wraps the grip handle
-    rArm.position.set(0.004, -0.088, 0.058);
+    // Arm rises from behind the grip; with rotation.x -0.88 and the hand's
+    // own -0.52, the palm lands centred on the grip shaft (~y -0.06, z 0.064)
+    rArm.position.set(0.010, -0.098, 0.125);
     rArm.rotation.set(-0.88, 0.04, 0.09);
     group.add(rArm);
 
@@ -267,8 +268,9 @@ export class Hands {
     lHand.rotation.x = -0.38;
     lArm.add(lHand);
     lArm.scale.setScalar(HAND_SCALE);
-    // Hand cups under the front of the frame
-    lArm.position.set(-0.012, -0.062, -0.070);
+    // Palm cups the underside of the frame front (~y -0.025, z -0.085) —
+    // the arm group itself sits well behind where the hand ends up
+    lArm.position.set(-0.005, -0.062, -0.023);
     lArm.rotation.set(-0.95, -0.12, -0.09);
     group.add(lArm);
   }
