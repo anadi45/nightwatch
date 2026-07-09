@@ -4,19 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Nightwatch is a first-person Three.js game built for Reddit's Devvit Web platform for the "Games with a Hook" hackathon. It runs as an interactive post inside Reddit feeds. Players hold a lantern and torch in first person. Survivors and ghosts approach from the dark. Players must tap on **ghosts** to flash their torch and banish them, while letting **human survivors** reach safety. The core challenge is quick identification under time pressure.
+Nightwatch is a first-person alien-shooter Three.js game built for Reddit's Devvit Web platform for the "Games with a Hook" hackathon. It runs as an interactive post inside Reddit feeds. The player wields a two-handed alien energy pistol. Alien entities glide out of the dark toward the player; every tap fires a bolt toward that point. Hits build an unbroken streak — any miss resets it. The core hook is accuracy under pressure: spamming shots is punished.
+
+## Art Direction — Silhouette Horror (Limbo/Inside) with alien bioluminescence
+
+Every visual decision obeys one rule: **the scene is layered near-black paper-cut silhouettes against a luminous moonlit sky; the aliens' teal glow and the pistol's energy elements are the only bright things.** Concretely:
+
+- Distance fog fades toward **pale haze** (0x3d4a68), never black — that's what separates the cutout layers. Sky horizon 0x3d4a68 → mid 0x1a2440 → zenith 0x0a0e22 (3-stop gradient).
+- Environment objects (trees, stones, kit models, fence, rocks, mounds, grass) use unlit near-black `MeshBasicMaterial` (`SILHOUETTE_MAT`, 0x05060c) — silhouettes don't take light. Kenney kit meshes get this material overridden at install time; that's what unifies their cartoony style with the scene.
+- Light sources: cool moonlight directional from the moon position (8,13,-44) at intensity 1.0, ambient 0x2a3a5a @ 0.55, a dim forward fill directional (0x3a4d6a @ 0.3) so gameplay is readable, a warm lantern-pool PointLight near the player (2.2, range 20), and the pistol's teal energy/muzzle lights (kept dim/short-range so gloves don't tint green). The ground has a baked emissive moonlight pool.
+- Aliens self-glow **teal** (0x00ddaa rim, fresnel shader) with teal almond eyes; the pistol's vents/muzzle share the same teal language. The world lantern pool is the only warm element.
+- New props = new black cutout shapes. Do not add colored/lit/textured environment objects.
 
 ## Gameplay
 
 - **60-second timed sessions** with escalating difficulty
-- **Humans** (blue eyes, upright, running gait) flee straight toward the player at 1.5x speed
-- **Ghosts** (red eyes, translucent, floating, trailing wisps) use tricky movement patterns (weave, zigzag, flank) at base speed
-- **Tap on a creature** to flash your torch light on it:
-  - Ghost → disintegrates (score +1, streak continues)
-  - Human → streak resets (survivor stays, keeps approaching)
-- **Ghost reaching the player** = miss (streak breaks, speed penalty)
-- **Human reaching the player** = peaceful vanish (neutral, they made it to safety)
-- Consecutive misses make evil creatures approach faster
+- **Aliens** (massive-cranium grey-alien silhouette, teal fresnel rim, teal almond eyes, floating, trailing wisps) use movement patterns (straight/weave/zigzag/flank) that get trickier as time passes, always staying inside the fence line (`X_BOUND`)
+- **Tap anywhere** to fire an energy bolt toward the tap point (aim assist: if the tap ray crosses an alien, the bolt aims at that exact point — but the alien can drift out of its path in flight)
+- **Bolt hits an alien** → alien dissolves (score +1, streak +1)
+- **Bolt misses** (flies past, hits the ground, burns out) → streak resets, counts as a miss
+- **Alien reaching the player** → miss, streak resets, speed penalty
+- Consecutive alien-reaches make aliens approach faster; a hit resets the speed to base
 
 ## Tech Stack
 
@@ -47,13 +55,16 @@ The project follows Devvit's client/server split pattern:
   - Splash→Game navigation uses `requestExpandedMode(event, 'game')` from `@devvit/web/client`
 
 - **`src/client/engine/`** — Game engine modules:
-  - `GameManager.ts` — game loop, raycasting for tap-on-creature input, scoring, spawn timing, state transitions. Render loop runs from construction (scene visible behind ready/end overlays).
-  - `Creature.ts` — two creature types built from Three.js primitives:
-    - **Human** (survivor): SphereGeometry head with hair, BoxGeometry torso in warm tunic, CylinderGeometry arms/legs with running gait animation, blue eyes
-    - **Ghost** (threat): translucent LatheGeometry body tapering to wispy tail, floating SphereGeometry head, trailing arm wisps, tail tendrils, additive glow aura, red flickering eyes, ethereal hover animation
-    - Shared: movement patterns (straight/weave/zigzag/flank), state machine (approaching→disintegrating/fading), invisible hit sphere for forgiving tap targets, torch flash effect (PointLight burst on tap)
-  - `Hands.ts` — first-person hands attached to the camera. Left hand holds a glowing lantern (IcosahedronGeometry core, additive glow layers, strong PointLight). Right hand holds a torch (thrust animation on tap). Responsive positioning based on camera FOV + aspect ratio for mobile support. All materials self-lit (MeshBasicMaterial).
-  - `World.ts` — Three.js scene, camera (added to scene for hand children to render), FogExp2, fence-post path, flickering lantern light
+  - `GameManager.ts` — game loop, bolt firing (tap → raycast for aim point → spawn projectile; class is still named `Fireball`), per-frame sphere collision between bolts and aliens, scoring/streak, spawn timing, state transitions. Render loop runs from construction (scene visible behind ready/end overlays). Owns the shared `fx` ParticleSystem and injects it into creatures and fireballs.
+  - `PostFX.ts` — EffectComposer + UnrealBloomPass + film ShaderPass (vignette to ~45% corners, animated grain damped in bright areas, slight cool grade — runs on the linear HDR buffer before OutputPass) + OutputPass. Selective bloom via HDR color boosting: emissive materials multiply their color above 1.0 and the bloom threshold is 1.0, so only eyes/energy-vents/muzzle/moon/alien-rims bloom. Custom HalfFloat MSAA render target (WebGL2); falls back to direct rendering on WebGL1 (`postfx.enabled === false`). ACES tone mapping is set on the renderer in World.
+  - `Creature.ts` — the alien, **fully procedural, no model asset**: lathe-profile shroud body + alien-cranium lathe head (tiny chin flaring to a wide ovoid dome) + tail tendrils (no arms), all in one per-instance clone of a fresnel ShaderMaterial (**normal blending, near-black body + teal 0x00ddaa rim** that crosses the bloom threshold at glancing angles — additive made it a translucent wash against the pale fog; vertex-shader waver; manual fog mixes the body toward the haze color 0x3d4a68 with World's density 0.06; `uDissolve` eats the body tail-up on death). Almond eyes: 3 meshes per eye (void-black shell + teal HDR iris + additive glow), all sphere geo flattened via mesh scale; iris/glow opacity pulses in `animate()` (eyeMats layout is [void, iris, glow] × 2 — indices matter). Wisp trail, additive aura, movement patterns fitted inside `X_BOUND` (weave recentered, hard clamp for all), state machine, hit sphere, `getHitCenter()`. Dies by dissolve + scale-collapse + teal fx burst + short-lived teal impact PointLight. `dispose()` disposes only owned materials — geometry is module-level shared statics.
+  - `assets.ts` — GLTFLoader pipeline (`src/client/assets/*.glb`, ~106 KB total): Kenney gravestones/crypt/lantern only — the alien and pistol are procedural. `normalize()` wraps loaded scenes so they're height 1 with feet at origin — consumers scale in world units. Loaded once behind the ready screen; `spawnCreature()` waits for the load so the first reveal is cohesive; `World.installKitProps()` swaps procedural stand-ins when ready (`Hands.installLantern()` is now a no-op). GLBs imported with Vite `?url` (needs `vite-env.d.ts`).
+  - `Fireball.ts` — the fired energy bolt (class name predates the pistol): elongated white-hot HDR core inside a teal additive sheath + halo, all stretched along the flight axis (group quaternion from the aim ray; bloom does the glow, no PointLight). Trail through the shared fx system: tracer afterimages hanging on the flight line (reads as a beam from behind) + a twin ion helix coiling around the path + occasional white flecks; hit = white flash + expanding teal spark shell + rising ion motes, miss = dim teal fizzle. Grows out of the muzzle over the first 0.07s. Expires past z −24, below ground, or after 1.8s. All resources are shared statics; nothing to dispose per instance.
+  - `Hands.ts` — first-person two-handed alien energy pistol attached to the camera. Procedural gun: dark metal frame/slide/grip/trigger-guard (MeshStandardMaterial), teal HDR-boosted energy vents + core window + muzzle ring (bloom, no per-vent lights). Both hands grip it (same finger/palm/arm builders, **dark leather gloves** — bare skin glowed green under the teal lights): right fist on the handle, left bracing under the barrel. The whole assembly is scaled 0.55 (and arms a further 0.6) so the pistol reads as a handgun in frame, not a screen-filling prop. `throwFireball()` triggers a 0.30s recoil kick + 0.09s teal-white muzzle-flash PointLight + additive glow decay. A persistent breathing teal PointLight sits at the frame (replaces the old warm orb light in the 3-light budget). `installLantern()` is a no-op kept for the GameManager call-site.
+  - `World.ts` — Three.js scene, camera (added to scene for hand children to render), pale-haze FogExp2 (see Art Direction), ACES tone mapping, PostFX integration (render + resize), near-black ground with baked emissive moonlight pool + moonlit path strip (path texture doubles as color map and emissiveMap; transparent for feathered edges), merged silhouette fence (one draw call), moonlight DirectionalLight from the moon position (8,13,-44) @ 1.0, ambient 0.55, forward fill directional 0.3, flickering warm lantern light near the player (2.2, range 20)
+  - `effects/Particles.ts` — pooled `ParticleSystem`: one THREE.Points, one draw call, additive soft-dot shader with manual FogExp2 fade, swap-with-last compaction. Instances: `fx` (world, 300, owned by GameManager) and torch embers (40, owned by Hands).
+  - `environment/Sky.ts` — 3-stop gradient dome (horizon 0x3d4a68 → mid 0x1a2440 → zenith 0x0a0e22, BackSide ShaderMaterial), ~200 small dim twinkling star Points (vertex-shader animated, cool #c8d8f4 tint), moon upper-right at (8,13,-44) with radial-gradient disc (#f2f6ff → #8ca8d0) + one smooth canvas-gradient halo sprite (layered flat discs band visibly), two hand-colored hill ridge layers (ShapeGeometry paper-cut silhouettes, farther = lighter). All `fog: false`.
+  - `environment/Props.ts` — dead trees (recursive branching merged into one geometry), gravestones placed from a shared `stoneSpots` array (used by procedural stand-ins, kit models, and the dirt mounds in front of each stone so they stay aligned), patch-clustered grass with wind sway injected via `onBeforeCompile` (displacement ∝ height², `frustumCulled = false` since tips exceed static bounds) + rocks (each scatter one merged geometry) — all silhouette cutouts (grass has its own material for the wind uniform, rest share `SILHOUETTE_MAT`); drifting additive mist planes, occluding smoke clouds (normal alpha blending + renderOrder 3 so they genuinely hide ghosts drifting behind them — a difficulty mechanic, not just decoration), firefly Points (fully vertex-shader animated), plus exported CanvasTexture makers for the ground's emissive moonlight pool (not tiled, maps 1:1) and the path (alpha-feathered ragged edges — its material needs `transparent: true`).
 
 - **`src/server/`** — Hono app (`index.ts`) mounting routes:
   - `/api/*` — game API endpoints (client fetches these)
@@ -83,7 +94,10 @@ Client and server have separate tsconfig files because `@devvit/web` uses condit
 - Camera must be added to scene (`scene.add(camera)`) for camera-child objects (hands) to render
 - Keep draw calls low: share geometry/material instances, prefer `MeshBasicMaterial` for small/unlit elements and self-lit objects (hands), only use `transparent: true` on materials that actually need sub-1.0 opacity or additive blending
 - Avoid per-frame `traverse()` — store direct references to materials/meshes that need animation
-- Minimize `PointLight` count (each light multiplies fragment shader cost); creature flash lights are short-lived and cleaned up
+- Minimize `PointLight` count (each light multiplies fragment shader cost). Budget: 2 persistent (world lantern pool, pistol energy light) + short-lived muzzle flash and alien impact lights. Creatures and bolts must NOT carry persistent PointLights — bloom-boosted glow materials do that job.
+- Shared static geometry/materials rule: module-level shared resources are **never mutated and never disposed by instances**; anything whose opacity/color animates must be a per-instance clone tracked and disposed by its owner. Cloned ShaderMaterials share the compiled program, so cloning is cheap.
+- Bloom is half-CSS-resolution and DPR-independent: `composer.setSize` multiplies by pixelRatio internally, so `bloomPass.setSize(cssW, cssH)` must be re-called *after* it (composer.setSize overwrites pass sizes)
+- Particle effects go through the pooled `ParticleSystem` (one draw call per system) — never one mesh per particle
 - Dispose all Three.js geometries and materials when removing meshes from the scene to prevent memory leaks
 - Responsive hand positioning: calculate from camera FOV + aspect ratio, not hardcoded pixel values
 - The Vite build uses `@devvit/start/vite` plugin which handles the client/server split automatically
@@ -97,3 +111,7 @@ Client and server have separate tsconfig files because `@devvit/web` uses condit
 - Never use `Object.assign` with `position: new THREE.Vector3()` on Three.js objects — it replaces the internal position property and breaks matrix updates. Always use `mesh.position.set(x, y, z)`.
 - Raycaster needs `intersectObjects(targets, true)` (recursive) since creatures are Groups with child meshes. Walk the parent chain from the hit object to find the creature Group.
 - Creatures need `material.colorWrite = false; material.depthWrite = false` on invisible hit-area meshes so they're raycastable but don't render.
+- Additive materials must never enable `depthWrite`, and custom ShaderMaterials get no scene fog — the particle shader implements FogExp2 manually as a fade-to-black (`exp(-pow(density * viewDepth, 2))`); the density constant must stay in sync with World's fog (0.06).
+- Custom ShaderMaterials bypass per-material tone mapping/color space — author output in linear and let OutputPass convert the composed frame; do not include `colorspace_fragment`.
+- Sky/moon/star materials need `fog: false` or FogExp2 erases them at 50+ units.
+- `npm run lint` currently fails on Windows for two pre-existing reasons: the glob is single-quoted in package.json (cmd passes quotes literally) and `eslint.config.js` imports `@eslint/js` which is not in devDependencies.

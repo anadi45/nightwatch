@@ -59,7 +59,7 @@ function init() {
   btnStart.addEventListener('click', startGame);
   btnRestart.addEventListener('click', startGame);
 
-  // Tap on a creature to torch it
+  // Tap to hurl a fireball toward that point
   container.addEventListener('pointerdown', (e) => {
     const rect = container.getBoundingClientRect();
     const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;

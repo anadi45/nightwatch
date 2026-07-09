@@ -1,39 +1,155 @@
 import * as THREE from 'three';
+import type { ParticleSystem } from './effects/Particles';
 
-export type CreatureType = 'human' | 'ghost';
 export type MovementPattern = 'straight' | 'weave' | 'zigzag' | 'flank';
 
 export interface CreatureConfig {
-  type: CreatureType;
   speed: number;
   spawnZ: number;
   targetZ: number;
   spawnX?: number;
   pattern?: MovementPattern;
+  fx?: ParticleSystem;
 }
 
 type CreatureState = 'approaching' | 'disintegrating' | 'fading';
 
 const DISINTEGRATE_DURATION = 0.5;
 const FADE_DURATION = 0.35;
-const FLASH_DURATION = 0.4;
-const FLASH_INTENSITY = 4;
+const IMPACT_DURATION = 0.4;
+const IMPACT_INTENSITY = 4;
 const HIT_RADIUS = 0.5;
+// Ghosts never cross the fence line (posts at x ±2; margin covers the
+// ~0.5 half-width of the wraith so even sleeves/tendrils stay inside)
+const X_BOUND = 1.4;
 
-const HUMAN_SKIN = 0xc4956a;
-const HUMAN_TUNIC = 0x6b5e4d;
-const HUMAN_PANTS = 0x4a3f35;
-const HUMAN_HAIR = 0x3a2a1a;
-const HUMAN_EYE = 0x44ddff;
-const HUMAN_GLOW = 0x22aacc;
+// HDR particle colors (>1 blooms)
+const GHOST_BURST_COLOR = new THREE.Color(0x00ffcc).multiplyScalar(2.0);
+const GHOST_WISP_COLOR  = new THREE.Color(0x007755).multiplyScalar(1.0);
 
-const GHOST_BODY = 0x8899aa;
-const GHOST_WISP = 0x556688;
-const GHOST_EYE = 0xff2200;
-const GHOST_GLOW = 0xff1100;
+// ─── SHARED STATIC RESOURCES (never mutated, never disposed here) ─────
+// Fully procedural alien entity. Shroud body is a lathe profile; head is a
+// separate lathe with a massive ovoid cranium pinching to a tiny pointed chin.
+function makeGhostBodyGeo(): THREE.LatheGeometry {
+  const pts: THREE.Vector2[] = [];
+  const seg = 12;
+  for (let i = 0; i <= seg; i++) {
+    const t = i / seg;
+    const y = t * 1.6;
+    let r: number;
+    if (t < 0.15) r = 0.2 * Math.sqrt(t / 0.15);
+    else if (t < 0.4) r = 0.2 - (t - 0.15) * 0.15;
+    else if (t < 0.7) r = 0.16 + Math.sin(((t - 0.4) * Math.PI) / 0.3) * 0.04;
+    else r = 0.2 * (1 - (t - 0.7) / 0.3);
+    pts.push(new THREE.Vector2(Math.max(0.01, r), y));
+  }
+  return new THREE.LatheGeometry(pts, 10);
+}
+
+// Grey-alien cranium: tiny chin at y=0, flares to wide dome, rounds to crown at y=0.68.
+function makeAlienHeadGeo(): THREE.LatheGeometry {
+  const pts: THREE.Vector2[] = [];
+  const seg = 18;
+  for (let i = 0; i <= seg; i++) {
+    const t = i / seg;
+    const y = t * 0.68;
+    let r: number;
+    if (t < 0.10)      r = 0.02 * (t / 0.10);
+    else if (t < 0.30) r = 0.02 + 0.12 * ((t - 0.10) / 0.20);
+    else if (t < 0.55) r = 0.14 + 0.14 * ((t - 0.30) / 0.25);
+    else if (t < 0.80) r = 0.28 - 0.04 * ((t - 0.55) / 0.25);
+    else               r = 0.24 * (1 - (t - 0.80) / 0.20);
+    pts.push(new THREE.Vector2(Math.max(0.003, r), y));
+  }
+  return new THREE.LatheGeometry(pts, 14);
+}
+
+const GHOST_BODY_GEO  = makeGhostBodyGeo();
+const ALIEN_HEAD_GEO  = makeAlienHeadGeo();
+const GHOST_TENDRIL_GEO = new THREE.PlaneGeometry(0.06, 0.3, 1, 3);
+const GHOST_AURA_GEO  = new THREE.SphereGeometry(0.35, 8, 8);
+// Eye: sphere scaled on the mesh to a flat almond (scaleX 1.8, scaleY 0.4)
+const EYE_VOID_GEO  = new THREE.SphereGeometry(0.060, 10, 6);
+const EYE_IRIS_GEO  = new THREE.SphereGeometry(0.034, 7, 5);
+const EYE_GLOW_GEO  = new THREE.SphereGeometry(0.095, 8, 6);
+const HIT_GEO = new THREE.SphereGeometry(HIT_RADIUS, 6, 6);
+
+const AURA_MAT = new THREE.MeshBasicMaterial({
+  color: new THREE.Color(0x0a4436).multiplyScalar(1.4),
+  transparent: true,
+  opacity: 0.08,
+  blending: THREE.AdditiveBlending,
+  side: THREE.BackSide,
+});
+
+const HIT_MAT = new THREE.MeshBasicMaterial();
+HIT_MAT.colorWrite = false;
+HIT_MAT.depthWrite = false;
+
+// Fresnel rim + vertex waver. NORMAL blending with a near-black body —
+// additive made the alien a translucent wash against the pale fog; a solid
+// dark silhouette with a teal rim is what actually pops out there. Fog is
+// manual: the body color mixes toward World's haze color with the same
+// FogExp2 curve (density must stay in sync with World, 0.06).
+const GHOST_FOG_DENSITY = 0.06;
+
+const GHOST_MAT_TEMPLATE = new THREE.ShaderMaterial({
+  uniforms: {
+    uTime: { value: 0 },
+    uOpacity: { value: 1 },
+    uDissolve: { value: 0 },
+    uFogDensity: { value: GHOST_FOG_DENSITY },
+    uFogColor: { value: new THREE.Color(0x3d4a68) },
+    uBaseColor: { value: new THREE.Color(0x070d12) },
+    // teal bioluminescent rim — crosses the bloom threshold at glancing angles
+    uRimColor: { value: new THREE.Color(0x00ddaa) },
+  },
+  vertexShader: /* glsl */ `
+    uniform float uTime;
+    varying vec3 vNormal;
+    varying vec3 vViewDir;
+    varying float vDepth;
+    varying float vY;
+    void main() {
+      vec3 p = position + normal * sin(position.y * 6.0 + uTime * 3.0) * 0.03;
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+      vNormal = normalize(normalMatrix * normal);
+      vViewDir = normalize(-mv.xyz);
+      vDepth = -mv.z;
+      vY = clamp(position.y / 1.6, 0.0, 1.0);
+      gl_Position = projectionMatrix * mv;
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform float uOpacity;
+    uniform float uDissolve;
+    uniform float uFogDensity;
+    uniform vec3 uFogColor;
+    uniform vec3 uBaseColor;
+    uniform vec3 uRimColor;
+    varying vec3 vNormal;
+    varying vec3 vViewDir;
+    varying float vDepth;
+    varying float vY;
+    void main() {
+      float rim = pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewDir))), 2.5);
+      vec3 col = uBaseColor + uRimColor * rim * 2.4;
+      // fade the silhouette into the haze exactly like FogExp2 would
+      float fog = exp(-pow(uFogDensity * vDepth, 2.0));
+      col = mix(uFogColor, col, fog);
+      // dissolve eats the body from the tail upward
+      float dissolve = clamp(1.0 - uDissolve * (0.6 + 0.9 * (1.0 - vY)), 0.0, 1.0);
+      float alpha = uOpacity * dissolve * 0.92;
+      gl_FragColor = vec4(col, alpha);
+    }
+  `,
+  blending: THREE.NormalBlending,
+  transparent: true,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
 
 export class Creature {
-  readonly type: CreatureType;
   readonly mesh: THREE.Group;
   private speed: number;
   private targetZ: number;
@@ -42,10 +158,12 @@ export class Creature {
   private creatureState: CreatureState = 'approaching';
   private stateTimer = 0;
   private spawnTime = performance.now();
-  private coreLight: THREE.PointLight;
+  private fx: ParticleSystem | null;
 
   private pattern: MovementPattern;
   private baseX: number;
+  /** Weave center + amplitude, fitted inside X_BOUND in the constructor. */
+  private weaveCenter = 0;
   private weaveAmplitude = 0.8 + Math.random() * 1.2;
   private weaveFreq = 1.5 + Math.random() * 1.5;
   private zigzagDir = 1;
@@ -53,136 +171,51 @@ export class Creature {
   private zigzagInterval = 0.4 + Math.random() * 0.4;
   private flankTarget: number;
 
+  // per-instance (animated/faded) resources — disposed in dispose()
+  private ownedMaterials: THREE.Material[] = [];
+  private fadeBaseOpacities: number[] = [];
+
+  private ghostMat: THREE.ShaderMaterial;
   private eyeMats: THREE.MeshBasicMaterial[] = [];
-  private arms: THREE.Mesh[] = [];
-  private legs: THREE.Mesh[] = [];
-  private head: THREE.Mesh | null = null;
+  private head: THREE.Mesh;
   private ragPanels: THREE.Mesh[] = [];
-  private childVelocities: THREE.Vector3[] = [];
-  private flashLight: THREE.PointLight | null = null;
-  private flashGlow: THREE.Mesh | null = null;
-  private flashBeam: THREE.Mesh | null = null;
-  private flashTimer = 0;
+  private aura: THREE.Mesh;
+  private wispTimer = 0;
+  private impactLight: THREE.PointLight | null = null;
+  private impactGlow: THREE.Mesh | null = null;
+  private impactTimer = 0;
 
   constructor(config: CreatureConfig) {
-    this.type = config.type;
     this.speed = config.speed;
     this.targetZ = config.targetZ;
+    this.fx = config.fx ?? null;
     this.mesh = new THREE.Group();
-    this.coreLight = new THREE.PointLight(0x000000, 0, 0);
     this.pattern = config.pattern ?? 'straight';
-    this.baseX = config.spawnX ?? (Math.random() - 0.5) * 3;
+    this.baseX = THREE.MathUtils.clamp(config.spawnX ?? (Math.random() - 0.5) * 3, -X_BOUND, X_BOUND);
     this.flankTarget = this.baseX > 0 ? -0.5 : 0.5;
-
-    if (this.type === 'human') this.buildHuman();
-    else this.buildGhost();
-    this.addHitArea();
-
-    this.mesh.position.set(this.baseX, 0, config.spawnZ);
-  }
-
-  // ─── BUILD HUMAN (survivor running toward player) ─────────────────
-  private buildHuman(): void {
-    const skin = new THREE.MeshStandardMaterial({ color: HUMAN_SKIN, roughness: 0.8 });
-    const tunic = new THREE.MeshStandardMaterial({ color: HUMAN_TUNIC, roughness: 0.9 });
-    const pants = new THREE.MeshStandardMaterial({ color: HUMAN_PANTS, roughness: 0.9 });
-
-    // Head
-    this.head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), skin);
-    this.head.position.y = 1.38;
-    this.mesh.add(this.head);
-
-    // Hair
-    const hair = new THREE.Mesh(
-      new THREE.SphereGeometry(0.13, 8, 4, 0, Math.PI * 2, 0, Math.PI * 0.55),
-      new THREE.MeshBasicMaterial({ color: HUMAN_HAIR })
+    // shrink the weave to fit, then recenter it so the full sinusoid
+    // stays inside the fence instead of clipping flat at the boundary
+    this.weaveAmplitude = Math.min(this.weaveAmplitude, X_BOUND);
+    this.weaveCenter = THREE.MathUtils.clamp(
+      this.baseX,
+      -(X_BOUND - this.weaveAmplitude),
+      X_BOUND - this.weaveAmplitude
     );
-    hair.position.y = 1.42;
-    this.mesh.add(hair);
 
-    // Torso
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.4, 0.14), tunic);
-    torso.position.y = 1.0;
-    this.mesh.add(torso);
+    // ── body: shroud + head + reaching arms + tail tendrils, all in the
+    // per-instance fresnel material (cloning shares the compiled program)
+    this.ghostMat = this.own(GHOST_MAT_TEMPLATE.clone());
 
-    // Arms
-    for (const sx of [-1, 1]) {
-      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.38, 4), skin);
-      arm.position.set(sx * 0.16, 0.95, 0);
-      this.arms.push(arm);
-      this.mesh.add(arm);
-    }
-
-    // Legs
-    for (const sx of [-1, 1]) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.035, 0.45, 4), pants);
-      leg.position.set(sx * 0.07, 0.35, 0);
-      this.legs.push(leg);
-      this.mesh.add(leg);
-    }
-
-    this.addEyes(HUMAN_EYE, HUMAN_GLOW, 1.4, 0.04);
-
-    this.coreLight = new THREE.PointLight(HUMAN_GLOW, 0.4, 3);
-    this.coreLight.position.set(0, 1.4, 0.15);
-    this.mesh.add(this.coreLight);
-  }
-
-  // ─── BUILD GHOST (translucent floating specter) ───────────────────
-  private buildGhost(): void {
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: GHOST_BODY, transparent: true, opacity: 0.45,
-      roughness: 0.3, metalness: 0.1, side: THREE.DoubleSide,
-    });
-
-    // Tapered body — round head flowing into a wispy tail
-    const bodyPoints: THREE.Vector2[] = [];
-    const seg = 12;
-    for (let i = 0; i <= seg; i++) {
-      const t = i / seg;
-      const y = t * 1.6;
-      let r: number;
-      if (t < 0.15) r = 0.2 * Math.sqrt(t / 0.15);
-      else if (t < 0.4) r = 0.2 - (t - 0.15) * 0.15;
-      else if (t < 0.7) r = 0.16 + Math.sin((t - 0.4) * Math.PI / 0.3) * 0.04;
-      else r = 0.2 * (1 - (t - 0.7) / 0.3);
-      bodyPoints.push(new THREE.Vector2(Math.max(0.01, r), y));
-    }
-    const body = new THREE.Mesh(new THREE.LatheGeometry(bodyPoints, 8), bodyMat);
+    const body = new THREE.Mesh(GHOST_BODY_GEO, this.ghostMat);
     this.mesh.add(body);
 
-    // Head — slightly translucent sphere
-    this.head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.16, 8, 6),
-      new THREE.MeshStandardMaterial({
-        color: GHOST_BODY, transparent: true, opacity: 0.5,
-        roughness: 0.2, metalness: 0.1,
-      })
-    );
-    this.head.position.y = 1.45;
+    // Alien cranium lathe — chin at y=0.94, crown at y=1.62
+    this.head = new THREE.Mesh(ALIEN_HEAD_GEO, this.ghostMat);
+    this.head.position.y = 0.94;
     this.mesh.add(this.head);
 
-    // Trailing wisp arms (reaching outward)
-    for (const sx of [-1, 1]) {
-      const arm = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.025, 0.008, 0.4, 4),
-        new THREE.MeshBasicMaterial({
-          color: GHOST_WISP, transparent: true, opacity: 0.3,
-        })
-      );
-      arm.position.set(sx * 0.2, 1.1, 0.08);
-      arm.rotation.x = -0.6;
-      arm.rotation.z = sx * 0.4;
-      this.arms.push(arm);
-      this.mesh.add(arm);
-    }
-
-    // Wispy tail tendrils
-    const tailMat = new THREE.MeshBasicMaterial({
-      color: GHOST_WISP, transparent: true, opacity: 0.2, side: THREE.DoubleSide,
-    });
     for (let i = 0; i < 3; i++) {
-      const tendril = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.3, 1, 3), tailMat);
+      const tendril = new THREE.Mesh(GHOST_TENDRIL_GEO, this.ghostMat);
       const angle = (i / 3) * Math.PI * 2;
       tendril.position.set(Math.cos(angle) * 0.08, 0.15, Math.sin(angle) * 0.08);
       tendril.rotation.y = angle;
@@ -190,103 +223,123 @@ export class Creature {
       this.mesh.add(tendril);
     }
 
-    // Additive glow aura
-    const aura = new THREE.Mesh(
-      new THREE.SphereGeometry(0.35, 8, 8),
-      new THREE.MeshBasicMaterial({
-        color: 0x334466, transparent: true, opacity: 0.06,
-        blending: THREE.AdditiveBlending, side: THREE.BackSide,
-      })
-    );
-    aura.position.y = 1.0;
-    this.mesh.add(aura);
-
-    this.addEyes(GHOST_EYE, GHOST_GLOW, 1.48, 0.055);
-
-    this.coreLight = new THREE.PointLight(GHOST_GLOW, 0.5, 3);
-    this.coreLight.position.set(0, 1.45, 0.15);
-    this.mesh.add(this.coreLight);
-  }
-
-  // ─── SHARED BUILD HELPERS ─────────────────────────────────────────
-  private addEyes(color: number, glowColor: number, headY: number, spacing: number): void {
+    // ── Almond eyes: flat ellipsoid (scaleX wide, scaleY thin) with teal iris glow.
+    // Eye center sits in face zone: y≈1.23, x=±0.10, z=0.22 (forward on face).
     for (const sx of [-1, 1]) {
-      const eyeMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 });
-      this.eyeMats.push(eyeMat);
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.02, 4, 4), eyeMat);
-      eye.position.set(sx * spacing, headY, 0.1);
-      this.mesh.add(eye);
+      // Void black shell
+      const voidMat = this.own(
+        new THREE.MeshBasicMaterial({ color: 0x010e0a, transparent: true, opacity: 0.98 })
+      );
+      this.eyeMats.push(voidMat);
+      const eyeVoid = new THREE.Mesh(EYE_VOID_GEO, voidMat);
+      eyeVoid.scale.set(1.8, 0.42, 1.0);
+      eyeVoid.position.set(sx * 0.10, 1.23, 0.22);
+      this.mesh.add(eyeVoid);
 
-      const glowMat = new THREE.MeshBasicMaterial({
-        color: glowColor, transparent: true, opacity: 0.15,
-        blending: THREE.AdditiveBlending,
-      });
+      // Teal iris — HDR boosted so it crosses the bloom threshold
+      const irisMat = this.own(
+        new THREE.MeshBasicMaterial({
+          color: new THREE.Color(0x00ffcc).multiplyScalar(2.6),
+          transparent: true,
+          opacity: 0.90,
+          blending: THREE.AdditiveBlending,
+        })
+      );
+      this.eyeMats.push(irisMat);
+      const iris = new THREE.Mesh(EYE_IRIS_GEO, irisMat);
+      iris.scale.set(1.6, 0.5, 1.0);
+      iris.position.set(sx * 0.10, 1.23, 0.23);
+      this.mesh.add(iris);
+
+      // Outer additive glow shell
+      const glowMat = this.own(
+        new THREE.MeshBasicMaterial({
+          color: new THREE.Color(0x00ddaa).multiplyScalar(1.6),
+          transparent: true,
+          opacity: 0.10,
+          blending: THREE.AdditiveBlending,
+        })
+      );
       this.eyeMats.push(glowMat);
-      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.05, 4, 4), glowMat);
-      glow.position.set(sx * spacing, headY, 0.1);
+      const glow = new THREE.Mesh(EYE_GLOW_GEO, glowMat);
+      glow.scale.set(1.8, 0.5, 1.0);
+      glow.position.set(sx * 0.10, 1.23, 0.21);
       this.mesh.add(glow);
     }
-  }
 
-  private addHitArea(): void {
-    const mat = new THREE.MeshBasicMaterial();
-    mat.colorWrite = false;
-    mat.depthWrite = false;
-    const hit = new THREE.Mesh(new THREE.SphereGeometry(HIT_RADIUS, 6, 6), mat);
+    // Additive glow aura (shared material — hidden on death, never faded)
+    this.aura = new THREE.Mesh(GHOST_AURA_GEO, AURA_MAT);
+    this.aura.position.y = 1.0;
+    this.aura.scale.setScalar(2);
+    this.mesh.add(this.aura);
+
+    const hit = new THREE.Mesh(HIT_GEO, HIT_MAT);
     hit.position.y = 0.85;
     this.mesh.add(hit);
+
+    this.mesh.position.set(this.baseX, 0, config.spawnZ);
+  }
+
+  private own<T extends THREE.Material>(mat: T): T {
+    this.ownedMaterials.push(mat);
+    return mat;
+  }
+
+  /** World-space center of the hittable body. */
+  getHitCenter(target: THREE.Vector3): THREE.Vector3 {
+    return target.copy(this.mesh.position).add(new THREE.Vector3(0, 0.85, 0));
   }
 
   // ─── PUBLIC API ───────────────────────────────────────────────────
-  flashTorch(): void {
-    if (this.flashLight) return;
-
-    // Short-range light to illuminate the creature's own meshes only
-    this.flashLight = new THREE.PointLight(0xffdd55, FLASH_INTENSITY, 1.2);
-    this.flashLight.position.set(0, 0.9, 0.2);
-    this.mesh.add(this.flashLight);
-
-    // Visible flashlight beam cone from player direction (+Z) toward creature body
-    const beamGeo = new THREE.ConeGeometry(0.35, 2.0, 6, 1, true);
-    beamGeo.rotateX(Math.PI / 2);
-    this.flashBeam = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({
-      color: 0xffdd44, transparent: true, opacity: 0.1,
-      blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-    }));
-    this.flashBeam.position.set(0, 0.9, 1.0);
-    this.mesh.add(this.flashBeam);
-
-    // Impact glow where the beam hits the creature body
-    this.flashGlow = new THREE.Mesh(
-      new THREE.SphereGeometry(0.3, 6, 6),
-      new THREE.MeshBasicMaterial({
-        color: 0xffee88, transparent: true, opacity: 0.3,
-        blending: THREE.AdditiveBlending,
-      })
-    );
-    this.flashGlow.position.set(0, 0.9, 0.05);
-    this.mesh.add(this.flashGlow);
-
-    this.flashTimer = FLASH_DURATION;
-  }
-
+  /** Fireball hit: flash, burst into motes, dissolve. */
   disintegrate(): void {
     if (this.handled) return;
     this.handled = true;
-    this.flashTorch();
-    this.beginDisintegrate();
-  }
+    this.creatureState = 'disintegrating';
+    this.stateTimer = 0;
+    this.aura.visible = false;
 
-  peacefulVanish(): void {
-    if (this.handled) return;
-    this.handled = true;
-    this.beginFade();
+    // impact flash — short-lived teal plasma light + blooming glow
+    this.impactLight = new THREE.PointLight(0x55ffdd, IMPACT_INTENSITY, 1.4);
+    this.impactLight.position.set(0, 0.9, 0.2);
+    this.mesh.add(this.impactLight);
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(0x99ffe6).multiplyScalar(2.0),
+      transparent: true,
+      opacity: 0.35,
+      blending: THREE.AdditiveBlending,
+    });
+    this.impactGlow = new THREE.Mesh(new THREE.SphereGeometry(0.32, 6, 6), glowMat);
+    this.impactGlow.position.set(0, 0.9, 0.05);
+    this.mesh.add(this.impactGlow);
+    this.impactTimer = IMPACT_DURATION;
+
+    // dissolve into rising motes
+    if (this.fx) {
+      const p = this.mesh.position.clone();
+      p.y += 1.0;
+      this.fx.burst(p, 45, {
+        color: GHOST_BURST_COLOR,
+        velocity: new THREE.Vector3(0, 1.4, 0),
+        spread: 2.6,
+        gravity: 1.0,
+        drag: 0.3,
+        life: 0.6,
+        lifeJitter: 0.5,
+        size: 0.045,
+        sizeJitter: 0.04,
+      });
+    }
   }
 
   reachPlayer(): void {
     if (this.handled) return;
     this.handled = true;
-    this.beginFade();
+    this.creatureState = 'fading';
+    this.stateTimer = 0;
+    this.aura.visible = false;
+    for (const mat of this.ownedMaterials) mat.transparent = true;
+    this.fadeBaseOpacities = this.ownedMaterials.map((m) => m.opacity);
   }
 
   isApproaching(): boolean {
@@ -309,121 +362,85 @@ export class Creature {
     this.speed = speed;
   }
 
-  // ─── STATE TRANSITIONS ────────────────────────────────────────────
-  private beginDisintegrate(): void {
-    this.creatureState = 'disintegrating';
-    this.stateTimer = 0;
-    this.coreLight.intensity = 2.5;
-
-    const center = new THREE.Vector3(0, 0.85, 0);
-    for (const child of this.mesh.children) {
-      const dir = child.position.clone().sub(center).normalize();
-      this.childVelocities.push(
-        dir.multiplyScalar(2 + Math.random() * 3)
-          .add(new THREE.Vector3(0, 1 + Math.random() * 2, 0))
-      );
-      if (child instanceof THREE.Mesh) {
-        const mat = child.material as THREE.MeshBasicMaterial | THREE.MeshStandardMaterial;
-        mat.transparent = true;
-        mat.opacity = mat.opacity || 1;
-      }
-    }
-  }
-
-  private beginFade(): void {
-    this.creatureState = 'fading';
-    this.stateTimer = 0;
-  }
-
   // ─── UPDATE ───────────────────────────────────────────────────────
   update(delta: number): void {
     if (!this.alive) return;
     const t = (performance.now() - this.spawnTime) * 0.001;
 
-    this.updateFlash(delta);
+    this.updateImpact(delta);
+    this.ghostMat.uniforms.uTime!.value = t;
 
     switch (this.creatureState) {
       case 'disintegrating':
-        if (this.updateDisintegrating(delta)) return;
+        this.updateDisintegrating(delta);
         break;
       case 'fading':
-        if (this.updateFading(delta)) return;
+        this.updateFading(delta);
         break;
       case 'approaching':
         this.mesh.position.z += this.speed * delta;
         this.applyMovementPattern(delta, t);
-        if (this.type === 'human') this.animateHuman(t);
-        else this.animateGhost(t);
+        this.animate(t, delta);
         break;
     }
   }
 
-  private updateFlash(delta: number): void {
-    if (!this.flashLight || this.flashTimer <= 0) return;
-    this.flashTimer -= delta;
-    const fade = Math.max(0, this.flashTimer / FLASH_DURATION);
-    this.flashLight.intensity = FLASH_INTENSITY * fade;
-    if (this.flashGlow) {
-      (this.flashGlow.material as THREE.MeshBasicMaterial).opacity = 0.3 * fade;
+  private updateImpact(delta: number): void {
+    if (!this.impactLight || this.impactTimer <= 0) return;
+    this.impactTimer -= delta;
+    const fade = Math.max(0, this.impactTimer / IMPACT_DURATION);
+    this.impactLight.intensity = IMPACT_INTENSITY * fade;
+    if (this.impactGlow) {
+      (this.impactGlow.material as THREE.MeshBasicMaterial).opacity = 0.35 * fade;
     }
-    if (this.flashBeam) {
-      (this.flashBeam.material as THREE.MeshBasicMaterial).opacity = 0.1 * fade;
+    if (this.impactTimer <= 0) this.cleanupImpact();
+  }
+
+  private cleanupImpact(): void {
+    if (this.impactLight) {
+      this.mesh.remove(this.impactLight);
+      this.impactLight = null;
     }
-    if (this.flashTimer <= 0) {
-      this.mesh.remove(this.flashLight);
-      this.flashLight = null;
-      for (const obj of [this.flashGlow, this.flashBeam]) {
-        if (obj) {
-          this.mesh.remove(obj);
-          obj.geometry.dispose();
-          (obj.material as THREE.Material).dispose();
-        }
-      }
-      this.flashGlow = null;
-      this.flashBeam = null;
+    if (this.impactGlow) {
+      this.mesh.remove(this.impactGlow);
+      this.impactGlow.geometry.dispose();
+      (this.impactGlow.material as THREE.Material).dispose();
+      this.impactGlow = null;
     }
   }
 
-  private updateDisintegrating(delta: number): boolean {
+  private updateDisintegrating(delta: number): void {
     this.stateTimer += delta;
-    if (this.stateTimer > DISINTEGRATE_DURATION) { this.alive = false; return true; }
-    const fade = Math.max(0, 1 - this.stateTimer / DISINTEGRATE_DURATION * 1.5);
-    for (let i = 0; i < this.mesh.children.length; i++) {
-      const child = this.mesh.children[i];
-      const vel = this.childVelocities[i];
-      if (vel) {
-        child.position.x += vel.x * delta;
-        child.position.y += vel.y * delta;
-        child.position.z += vel.z * delta;
-      }
-      if (child instanceof THREE.Mesh) {
-        (child.material as THREE.MeshStandardMaterial).opacity =
-          Math.min((child.material as THREE.MeshStandardMaterial).opacity, fade);
-      }
+    if (this.stateTimer > DISINTEGRATE_DURATION) {
+      this.alive = false;
+      return;
     }
-    this.coreLight.intensity *= 0.82;
-    return true;
+    const p = this.stateTimer / DISINTEGRATE_DURATION;
+    this.ghostMat.uniforms.uDissolve!.value = p;
+    // collapse toward the head as the body dissolves
+    const s = 1 - p * 0.45;
+    this.mesh.scale.set(s, 1 - p * 0.2, s);
+    for (const mat of this.eyeMats) mat.opacity *= (1 - p);
   }
 
-  private updateFading(delta: number): boolean {
+  private updateFading(delta: number): void {
     this.stateTimer += delta;
-    if (this.stateTimer > FADE_DURATION) { this.alive = false; return true; }
+    if (this.stateTimer > FADE_DURATION) {
+      this.alive = false;
+      return;
+    }
     const fade = Math.max(0, 1 - this.stateTimer / FADE_DURATION);
-    this.mesh.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        const mat = child.material as THREE.MeshStandardMaterial;
-        if (mat.transparent) mat.opacity = Math.min(mat.opacity, fade);
-      }
-    });
-    this.coreLight.intensity *= 0.8;
-    return true;
+    for (let i = 0; i < this.ownedMaterials.length; i++) {
+      this.ownedMaterials[i]!.opacity = (this.fadeBaseOpacities[i] ?? 1) * fade;
+    }
+    this.ghostMat.uniforms.uOpacity!.value = fade;
   }
 
   // ─── MOVEMENT ─────────────────────────────────────────────────────
   private applyMovementPattern(delta: number, t: number): void {
     switch (this.pattern) {
       case 'weave':
-        this.mesh.position.x = this.baseX + Math.sin(t * this.weaveFreq) * this.weaveAmplitude;
+        this.mesh.position.x = this.weaveCenter + Math.sin(t * this.weaveFreq) * this.weaveAmplitude;
         break;
       case 'zigzag':
         this.zigzagTimer += delta;
@@ -432,7 +449,6 @@ export class Creature {
           this.zigzagDir *= -1;
         }
         this.mesh.position.x += this.zigzagDir * this.speed * 1.5 * delta;
-        this.mesh.position.x = Math.max(-3, Math.min(3, this.mesh.position.x));
         break;
       case 'flank': {
         const p = Math.min(1, t * 0.5);
@@ -440,63 +456,62 @@ export class Creature {
         break;
       }
     }
+    // hard boundary for every pattern (animate() also nudges x slightly)
+    this.mesh.position.x = THREE.MathUtils.clamp(this.mesh.position.x, -X_BOUND, X_BOUND);
   }
 
-  // ─── ANIMATIONS ───────────────────────────────────────────────────
-  private animateHuman(t: number): void {
-    // Running gait
-    const stride = Math.sin(t * 8);
-    this.mesh.position.y = Math.abs(Math.sin(t * 8)) * 0.06;
-
-    if (this.arms[0]) this.arms[0].rotation.x = stride * 0.5;
-    if (this.arms[1]) this.arms[1].rotation.x = -stride * 0.5;
-    if (this.legs[0]) this.legs[0].rotation.x = -stride * 0.4;
-    if (this.legs[1]) this.legs[1].rotation.x = stride * 0.4;
-    if (this.head) this.head.rotation.y = Math.sin(t * 4) * 0.05;
-
-    this.coreLight.intensity = 0.4 + Math.sin(t * 3) * 0.1;
-  }
-
-  private animateGhost(t: number): void {
-    // Floating hover with gentle bob
+  // ─── ANIMATION ────────────────────────────────────────────────────
+  private animate(t: number, delta: number): void {
+    // Floating hover with gentle bob (the shader waver does the rest)
     this.mesh.position.y = 0.15 + Math.sin(t * 1.8) * 0.12 + Math.sin(t * 0.7) * 0.06;
     this.mesh.position.x += Math.sin(t * 2.2) * 0.002;
     this.mesh.rotation.y = Math.sin(t * 1.0) * 0.08;
 
-    // Arms sway ethereally
-    if (this.arms[0]) {
-      this.arms[0].rotation.z = 0.4 + Math.sin(t * 1.3) * 0.15;
-      this.arms[0].rotation.x = -0.6 + Math.sin(t * 1.8) * 0.1;
-    }
-    if (this.arms[1]) {
-      this.arms[1].rotation.z = -0.4 - Math.sin(t * 1.3 + 0.7) * 0.15;
-      this.arms[1].rotation.x = -0.6 + Math.sin(t * 1.8 + 0.7) * 0.1;
-    }
-
     // Head tilts slowly
-    if (this.head) this.head.rotation.z = Math.sin(t * 0.9) * 0.12;
+    this.head.rotation.z = Math.sin(t * 0.9) * 0.08;
 
     // Tail tendrils sway
     for (let i = 0; i < this.ragPanels.length; i++) {
-      this.ragPanels[i].rotation.x = Math.sin(t * 1.5 + i * 1.1) * 0.25;
-      this.ragPanels[i].rotation.z = Math.cos(t * 1.2 + i * 0.8) * 0.1;
+      this.ragPanels[i]!.rotation.x = Math.sin(t * 1.5 + i * 1.1) * 0.25;
+      this.ragPanels[i]!.rotation.z = Math.cos(t * 1.2 + i * 0.8) * 0.1;
     }
 
-    // Flickering red eyes
-    const flicker = Math.random() > 0.94 ? 0.15 : 1.0;
-    this.coreLight.intensity = (0.5 + Math.sin(t * 3.5) * 0.2) * flicker;
-    for (const mat of this.eyeMats) {
-      mat.opacity = (0.85 + Math.sin(t * 5) * 0.1) * flicker;
+    // Pulsing teal iris — animate only iris (index 1,4) and glow (index 2,5) mats
+    const flicker = Math.random() > 0.96 ? 0.20 : 1.0;
+    const pulse = (0.80 + Math.sin(t * 3.2) * 0.20) * flicker;
+    // eyeMats layout per eye: [void(0), iris(1), glow(2), void(3), iris(4), glow(5)]
+    for (let i = 0; i < this.eyeMats.length; i++) {
+      if (i % 3 === 1) this.eyeMats[i]!.opacity = 0.90 * pulse;
+      if (i % 3 === 2) this.eyeMats[i]!.opacity = 0.16 * pulse;
+    }
+
+    // Trailing wisps shed from the tail
+    if (this.fx) {
+      this.wispTimer -= delta;
+      if (this.wispTimer <= 0) {
+        this.wispTimer = 0.1 + Math.random() * 0.12;
+        const p = this.mesh.position.clone();
+        p.x += (Math.random() - 0.5) * 0.25;
+        p.y += 0.25 + Math.random() * 0.3;
+        this.fx.spawn(p, {
+          color: GHOST_WISP_COLOR,
+          velocity: new THREE.Vector3(0, 0.35, 0.2),
+          spread: 0.35,
+          drag: 0.4,
+          life: 0.5,
+          lifeJitter: 0.35,
+          size: 0.04,
+          sizeJitter: 0.03,
+        });
+      }
     }
   }
 
   // ─── CLEANUP ──────────────────────────────────────────────────────
   dispose(): void {
-    this.mesh.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.geometry.dispose();
-        (child.material as THREE.Material).dispose();
-      }
-    });
+    this.cleanupImpact();
+    // geometry is shared statics — only materials are ours
+    for (const mat of this.ownedMaterials) mat.dispose();
+    this.ownedMaterials.length = 0;
   }
 }

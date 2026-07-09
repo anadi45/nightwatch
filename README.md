@@ -8,14 +8,13 @@ This project is an entry for Reddit's [**Games with a Hook**](https://redditgame
 
 ## The Game
 
-You are the night watchman. Survivors flee toward your lantern light from the darkness — but ghosts haunt the shadows behind them. Humans run straight toward you for safety. Ghosts float from the darkness using unpredictable paths.
+You are the night watchman — and tonight, something not of this world walks the graveyard. Alien entities glide out of the dark on unpredictable paths — weaving, zigzagging, flanking from the sides — their teal bioluminescence the only warning you get.
 
-- **Humans** — Upright, running, blue eyes. Let them reach you safely.
-- **Ghosts** — Translucent, floating, red eyes. Tap them to flash your torch and banish them.
+Your weapon is an alien energy pistol. **Tap anywhere to fire** a bolt toward that point. Hit an alien and it dissolves in a burst of light — your streak climbs. Miss, and your streak shatters. Let one reach you and things get worse — they speed up.
 
-Torch a survivor by mistake and your streak resets. Let a ghost reach you and things get worse — they speed up. As the 60-second watch progresses, spawn rates increase and ghost movement gets trickier.
+As the 60-second watch progresses, spawn rates increase and alien movement gets trickier. Every shot counts: spraying bolts into the dark is the fastest way to lose your streak.
 
-One lantern. One torch. How many can you save?
+One pistol. One watch. How long can you keep the streak alive?
 
 ## Tech Stack
 
@@ -70,10 +69,15 @@ nightwatch/
 │   │   ├── splash.*            # Title screen (inline in feed)
 │   │   ├── game.*              # Three.js game scene + HUD + loader
 │   │   └── engine/
-│   │       ├── GameManager.ts  # Game loop, raycasting input, scoring
-│   │       ├── Creature.ts     # Unified creature model, movement, effects
-│   │       ├── Hands.ts        # First-person lantern + torch
-│   │       └── World.ts        # Scene, camera, lighting, environment
+│   │       ├── GameManager.ts  # Game loop, bolt firing/collision, scoring
+│   │       ├── Creature.ts     # Alien entity (procedural), movement patterns, dissolve
+│   │       ├── Fireball.ts     # Energy bolt projectile with ion-helix trail
+│   │       ├── assets.ts       # GLTF loading (Kenney Graveyard Kit, CC0)
+│   │       ├── Hands.ts        # First-person two-handed energy pistol
+│   │       ├── World.ts        # Scene, camera, lighting, environment
+│   │       ├── PostFX.ts       # Bloom post-processing (selective via HDR colors)
+│   │       ├── effects/        # Pooled particle system
+│   │       └── environment/    # Night sky, moon, stars, trees, gravestones, mist
 │   ├── server/                 # Backend — runs on Devvit servers
 │   │   ├── index.ts            # Hono app, mounts all routes
 │   │   ├── core/               # Server utilities
@@ -92,11 +96,9 @@ Nightwatch runs as a Devvit Web interactive post with two entrypoints:
 1. **Splash screen** — Rendered inline in the Reddit feed. Shows the game title and a Play button.
 2. **Game scene** — Full Three.js 3D scene in first person. Opens when the user clicks Play.
 
-The player holds a glowing lantern (left hand) and a torch (right hand) in first-person view. Survivors and ghosts approach along a dark, foggy path.
+The player grips a two-handed alien energy pistol in first-person view. Alien entities approach along a dark, foggy graveyard path as near-black silhouettes rimmed in teal bioluminescence, with glowing almond eyes and trailing wisps, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
 
-**Humans** run straight toward the player at high speed, fleeing the haunted darkness. They vanish peacefully on arrival. **Ghosts** float toward the player as translucent specters with trailing wisps, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
-
-Tap on a ghost to flash your torch and watch it disintegrate into scattered pieces. But flash a survivor by mistake and your streak resets. The challenge escalates: consecutive misses make ghosts faster, spawn intervals tighten, and movement patterns become trickier.
+Tap to fire an energy bolt toward that point. It flies straight, so a weaving alien can drift out of its path — lead your shots. A hit dissolves the alien in a burst of teal light and builds your streak; a miss (or an alien reaching you) breaks it. The challenge escalates: aliens that reach you make the rest faster, spawn intervals tighten, and movement patterns become trickier.
 
 The client communicates with the Devvit server via API routes (`/api/*`). The server handles game state persistence, menu actions for moderators, and app lifecycle events.
 
@@ -125,6 +127,10 @@ git push origin feature/your-feature
 | `npm run deploy` | Type-check, lint, and upload to Devvit |
 | `npm run launch` | Deploy and publish to production |
 | `npm run login` | Authenticate CLI with Reddit |
+
+## Credits
+
+- Gravestone, crypt, and lantern models from the [Kenney Graveyard Kit](https://kenney.nl/assets/graveyard-kit) (CC0) — the alien entity and energy pistol are fully procedural
 
 ## License
 
