@@ -58,19 +58,23 @@ export async function getPlayerStats(username: string): Promise<PlayerStats> {
 /**
  * Gate a new watch behind the daily cap. Starting a watch consumes a play
  * even if the player quits mid-run — the increment IS the reservation.
+ * The returned runId makes this run's submission idempotent: the client
+ * sends a keepalive copy when the page closes, and only one write lands.
  */
 export async function startRun(username: string): Promise<RunStartResponse> {
   const key = playsKey(username);
   const used = await redis.incrBy(key, 1);
   await redis.expire(key, 60 * 60 * 48);
   if (used > MAX_PLAYS_PER_DAY) {
-    return { type: 'runStart', allowed: false, playsRemaining: 0, carryStreak: 0 };
+    return { type: 'runStart', allowed: false, playsRemaining: 0, carryStreak: 0, runId: null };
   }
+  const day = new Date().toISOString().slice(0, 10);
   return {
     type: 'runStart',
     allowed: true,
     playsRemaining: MAX_PLAYS_PER_DAY - used,
     carryStreak: await getCarryStreak(username),
+    runId: `${day}:${used}`,
   };
 }
 
@@ -79,6 +83,8 @@ export interface RunResult {
   bestStreak: number;
   misses: number;
   endStreak: number;
+  /** Idempotency token from startRun; null skips deduplication. */
+  runId: string | null;
 }
 
 /**
@@ -98,6 +104,22 @@ export async function submitScore(
     run.misses === 0 ? run.endStreak === maxPossibleStreak : run.endStreak <= run.score;
   if (!streakConsistent || run.bestStreak < run.endStreak || run.bestStreak > maxPossibleStreak) {
     return null;
+  }
+
+  // Idempotency: the client submits both a normal fetch and a keepalive
+  // copy on page close — incrBy is atomic, so exactly one write proceeds.
+  if (run.runId !== null) {
+    const doneKey = `done:${username}:${run.runId}`;
+    const attempts = await redis.incrBy(doneKey, 1);
+    await redis.expire(doneKey, 60 * 60 * 48);
+    if (attempts > 1) {
+      return {
+        type: 'scoreSubmit',
+        newBest: false,
+        best: (await redis.zScore(LB_KEY, username)) ?? 0,
+        carryStreak: await getCarryStreak(username),
+      };
+    }
   }
 
   const previousBest = (await redis.zScore(LB_KEY, username)) ?? -1;

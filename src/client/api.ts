@@ -20,12 +20,13 @@ async function getJson<T>(url: string): Promise<T | null> {
   }
 }
 
-async function postJson<T>(url: string, body?: unknown): Promise<T | null> {
+async function postJson<T>(url: string, body?: unknown, keepalive = false): Promise<T | null> {
   try {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
+      keepalive,
     });
     if (!res.ok) return null;
     return (await res.json()) as T;
@@ -38,8 +39,11 @@ export const fetchInit = (): Promise<InitResponse | null> => getJson('/api/init'
 
 export const startRun = (): Promise<RunStartResponse | null> => postJson('/api/run/start');
 
-export const submitScore = (run: ScoreSubmitRequest): Promise<ScoreSubmitResponse | null> =>
-  postJson('/api/score', run);
+/** keepalive lets the request survive the page being closed mid-flight. */
+export const submitScore = (
+  run: ScoreSubmitRequest,
+  keepalive = false
+): Promise<ScoreSubmitResponse | null> => postJson('/api/score', run, keepalive);
 
 export const fetchLeaderboard = (): Promise<LeaderboardResponse | null> =>
   getJson('/api/leaderboard');

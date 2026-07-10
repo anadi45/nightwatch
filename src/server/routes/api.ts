@@ -39,6 +39,7 @@ api.post('/run/start', async (c) => {
       allowed: true,
       playsRemaining: null,
       carryStreak: 0,
+      runId: null,
     };
     return c.json(casual);
   }
@@ -50,12 +51,14 @@ api.post('/score', async (c) => {
   if (!username) return c.json({ error: 'not logged in' }, 401);
 
   const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+  const runId = body?.['runId'] ?? null;
   if (
     !body ||
     !isCount(body['score'], MAX_SCORE) ||
     !isCount(body['bestStreak'], MAX_STREAK) ||
     !isCount(body['endStreak'], MAX_STREAK) ||
-    !isCount(body['misses'], MAX_MISSES)
+    !isCount(body['misses'], MAX_MISSES) ||
+    (runId !== null && (typeof runId !== 'string' || runId.length > 20))
   ) {
     return c.json({ error: 'invalid run' }, 400);
   }
@@ -65,6 +68,7 @@ api.post('/score', async (c) => {
     bestStreak: body['bestStreak'] as number,
     misses: body['misses'] as number,
     endStreak: body['endStreak'] as number,
+    runId: runId as string | null,
   });
   if (!response) return c.json({ error: 'invalid run' }, 400);
   return c.json(response);

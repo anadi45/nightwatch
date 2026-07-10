@@ -165,6 +165,8 @@ Redis is Devvit's built-in store — per-installation, durable across sessions a
 4. **Watch ends** — the client POSTs the run to `/api/score`. The server validates it against the carry it handed out in step 2 (zero misses means `endStreak` must equal `carry + score` exactly; any other combination is a forged request), updates lifetime stats, stores `endStreak` as the new carry, and updates the leaderboard if the score beat the player's best.
 5. **End screen** — the client GETs `/api/leaderboard` and renders the top 5, the player's own rank, and where their streak now stands going into the next watch.
 
+**Closing the game never loses a run.** `/run/start` issues a `runId`; if the player closes the webview mid-watch or before the end-screen submit lands, a `pagehide` handler fires a keepalive copy of the run's current standing. The server deduplicates by `runId` (atomic counter), so no matter how many copies arrive, exactly one write counts. The splash card also re-fetches stats whenever it becomes visible again, so the numbers are fresh the moment the player returns to the feed.
+
 Every call fails soft: a network error or logged-out session never blocks play — logged-out players get uncapped casual runs with no carry and no leaderboard writes.
 
 ## Contributing

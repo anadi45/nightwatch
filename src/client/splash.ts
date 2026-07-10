@@ -20,7 +20,7 @@ if (context.username) {
 
 // Player standing right on the feed card — fail soft: the splash must
 // render fine for logged-out viewers or when the request doesn't land.
-void (async () => {
+async function refreshStats(): Promise<void> {
   try {
     const res = await fetch('/api/init');
     if (!res.ok) return;
@@ -34,4 +34,14 @@ void (async () => {
   } catch {
     // feed card stays minimal
   }
-})();
+}
+
+void refreshStats();
+
+// The splash isn't reloaded when the player closes the expanded game view,
+// so refresh whenever the card becomes visible again — that's the moment
+// the just-finished watch's numbers need to show up.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') void refreshStats();
+});
+window.addEventListener('pageshow', () => void refreshStats());

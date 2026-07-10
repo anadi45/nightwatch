@@ -35,6 +35,14 @@ function init() {
   let playsRemaining: number | null = null; // null = logged out (uncapped)
   let starting = false;
 
+  // Snapshot of the run in progress, so closing the game mid-watch (or
+  // before the end-screen submit lands) still records it via keepalive.
+  let runId: string | null = null;
+  let runSubmitted = true; // no run yet — nothing to salvage
+  let liveScore = 0;
+  let liveMisses = 0;
+  let liveStreak = 0;
+
   function renderPlayGate(): void {
     const out = playsRemaining !== null && playsRemaining <= 0;
     for (const btn of [btnStart, btnRestart]) {
@@ -62,6 +70,9 @@ function init() {
       scoreValue.textContent = String(state.score);
       streakValue.textContent = String(state.streak);
       if (state.streak > bestStreak) bestStreak = state.streak;
+      liveScore = state.score;
+      liveMisses = state.misses;
+      liveStreak = state.streak;
     },
 
     onTimerTick(timeRemaining: number) {
@@ -96,8 +107,13 @@ function init() {
       }
       carryStreak = gate.carryStreak;
       playsRemaining = gate.playsRemaining;
+      runId = gate.runId;
+      runSubmitted = gate.runId === null; // casual runs have nothing to salvage
     }
     bestStreak = carryStreak;
+    liveScore = 0;
+    liveMisses = 0;
+    liveStreak = carryStreak;
     readyScreen.classList.add('hidden');
     endScreen.classList.add('hidden');
     hud.classList.remove('hidden');
@@ -113,8 +129,17 @@ function init() {
     misses: number,
     finalStreak: number
   ): Promise<void> {
-    const result = await submitScore({ score, bestStreak: streak, misses, endStreak: finalStreak });
-    if (result) carryStreak = result.carryStreak;
+    const result = await submitScore({
+      score,
+      bestStreak: streak,
+      misses,
+      endStreak: finalStreak,
+      runId,
+    });
+    if (result) {
+      carryStreak = result.carryStreak;
+      runSubmitted = true;
+    }
 
     const board = await fetchLeaderboard();
     if (!board || board.top.length === 0) {
@@ -152,6 +177,24 @@ function init() {
 
   btnStart.addEventListener('click', () => void startGame());
   btnRestart.addEventListener('click', () => void startGame());
+
+  // Closing the game must not lose the run: fire a keepalive submission of
+  // the current standing. The server dedupes by runId, so if the normal
+  // end-of-run submit also landed (or lands), only one write counts.
+  window.addEventListener('pagehide', () => {
+    if (runId === null || runSubmitted) return;
+    runSubmitted = true;
+    void submitScore(
+      {
+        score: liveScore,
+        bestStreak,
+        misses: liveMisses,
+        endStreak: liveStreak,
+        runId,
+      },
+      true
+    );
+  });
 
   // Tap to fire an energy bolt toward that point
   container.addEventListener('pointerdown', (e) => {

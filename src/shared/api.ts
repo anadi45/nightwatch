@@ -31,6 +31,8 @@ export type RunStartResponse = {
   playsRemaining: number | null;
   /** Streak the run must start from. */
   carryStreak: number;
+  /** Idempotency token for this run's submission; null for casual runs. */
+  runId: string | null;
 };
 
 /** End-of-watch results the client submits. Identity comes from context. */
@@ -40,6 +42,9 @@ export type ScoreSubmitRequest = {
   misses: number;
   /** Streak standing at the end of the run — becomes the new carry. */
   endStreak: number;
+  /** Token from /run/start — lets the server drop duplicate submissions
+   *  (the client sends a keepalive copy when the page is closed). */
+  runId: string | null;
 };
 
 export type ScoreSubmitResponse = {
