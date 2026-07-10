@@ -192,14 +192,6 @@ canvas {
   background: transparent;
   box-shadow: none;
 }
-
-/* Ready-screen stats */
-
-#menu-stats {
-  margin-bottom: 2rem;
-  min-width: 240px;
-}
-
 /* End screen stats */
 
 #end-stats {

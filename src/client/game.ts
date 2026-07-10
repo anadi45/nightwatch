@@ -1,6 +1,5 @@
 import { GameManager } from './engine/GameManager.js';
 import { fetchInit, startRun, submitScore, fetchLeaderboard } from './api.js';
-import type { PlayerStats } from '../shared/api.js';
 
 const loader = document.getElementById('loader')!;
 const container = document.getElementById('game-container')!;
@@ -21,13 +20,6 @@ const leaderboard = document.getElementById('leaderboard')!;
 const lbList = document.getElementById('lb-list')!;
 const lbMe = document.getElementById('lb-me')!;
 
-const menuStats = document.getElementById('menu-stats')!;
-const msCarry = document.getElementById('ms-carry')!;
-const msBest = document.getElementById('ms-best')!;
-const msStreak = document.getElementById('ms-streak')!;
-const msRank = document.getElementById('ms-rank')!;
-const msPlays = document.getElementById('ms-plays')!;
-
 const btnStart = document.getElementById('btn-start') as HTMLButtonElement;
 const btnRestart = document.getElementById('btn-restart') as HTMLButtonElement;
 
@@ -43,15 +35,6 @@ function init() {
   let playsRemaining: number | null = null; // null = logged out (uncapped)
   let starting = false;
 
-  function renderMenuStats(stats: PlayerStats): void {
-    msCarry.textContent = String(stats.carryStreak);
-    msBest.textContent = String(stats.bestScore);
-    msStreak.textContent = String(stats.bestStreak);
-    msRank.textContent = stats.rank === null ? '—' : `#${stats.rank}`;
-    msPlays.textContent = String(stats.playsRemaining ?? '∞');
-    menuStats.classList.remove('hidden');
-  }
-
   function renderPlayGate(): void {
     const out = playsRemaining !== null && playsRemaining <= 0;
     for (const btn of [btnStart, btnRestart]) {
@@ -64,12 +47,12 @@ function init() {
     }
   }
 
-  // Ready screen meta: who is this, what's their standing, plays left
+  // Stats display lives on the splash card; here we only need the carry
+  // and the plays-left count to gate the Begin Watch button
   void fetchInit().then((initRes) => {
     if (initRes?.stats) {
       carryStreak = initRes.stats.carryStreak;
       playsRemaining = initRes.stats.playsRemaining;
-      renderMenuStats(initRes.stats);
       renderPlayGate();
     }
   });

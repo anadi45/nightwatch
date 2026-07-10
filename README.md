@@ -159,7 +159,7 @@ Redis is Devvit's built-in store — per-installation, durable across sessions a
 
 ### The lifecycle of a watch
 
-1. **Ready screen** — the client GETs `/api/init`; the server returns the viewer's stats (best score, best streak, all-time rank, the streak they're carrying, and how many watches they have left tonight). The Begin Watch button disables itself when tonight's plays are spent.
+1. **Feed card & ready screen** — the splash card in the feed shows the viewer's standing (carried streak, best score, rank, watches left) from `/api/init`. The in-game ready screen fetches the same endpoint only to gate the Begin Watch button, which disables itself when tonight's plays are spent.
 2. **Begin Watch** — the client POSTs `/api/run/start`. The server increments today's play counter (the increment *is* the reservation — quitting mid-run still spends the play) and returns the carried streak. The game seeds its streak counter from it.
 3. **The watch** — hits extend the streak on top of the carry; any miss resets it to 0, exactly as within a single run.
 4. **Watch ends** — the client POSTs the run to `/api/score`. The server validates it against the carry it handed out in step 2 (zero misses means `endStreak` must equal `carry + score` exactly; any other combination is a forged request), updates lifetime stats, stores `endStreak` as the new carry, and updates the leaderboard if the score beat the player's best.
