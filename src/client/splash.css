@@ -31,7 +31,39 @@ body {
 .subtitle {
   font-size: 1rem;
   opacity: 0.6;
-  margin-bottom: 2rem;
+  margin-bottom: 1.6rem;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Player standing on the feed card */
+
+#splash-stats {
+  display: flex;
+  justify-content: center;
+  gap: 1.6rem;
+  margin-bottom: 1.8rem;
+}
+
+.chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.chip-value {
+  font-size: 1.3rem;
+  color: #00ddaa;
+}
+
+.chip-label {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  opacity: 0.5;
 }
 
 #play-btn {

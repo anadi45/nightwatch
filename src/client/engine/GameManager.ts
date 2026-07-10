@@ -77,8 +77,10 @@ export class GameManager {
     };
   }
 
-  start(): void {
+  /** @param initialStreak streak carried in from previous watches — any miss still resets to 0 */
+  start(initialStreak = 0): void {
     this.state = this.freshState();
+    this.state.streak = initialStreak;
     this.creatures.forEach((c) => {
       this.world.scene.remove(c.mesh);
       c.dispose();

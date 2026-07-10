@@ -14,7 +14,9 @@ Your weapon is an alien energy pistol. **Tap anywhere to fire** a bolt toward th
 
 As the 60-second watch progresses, spawn rates increase and alien movement gets trickier. Every shot counts: spraying bolts into the dark is the fastest way to lose your streak.
 
-One pistol. One watch. How long can you keep the streak alive?
+The streak is the real game: it **carries between watches** — end tonight's watch on a streak of 14 and tomorrow's begins at 14 — and only a miss ever resets it. You get **two watches per night**, so every watch matters.
+
+One pistol. Two watches. How long can you keep the streak alive?
 
 ## Tech Stack
 
@@ -68,6 +70,7 @@ nightwatch/
 │   ├── client/                 # Frontend — runs in the Reddit post
 │   │   ├── splash.*            # Title screen (inline in feed)
 │   │   ├── game.*              # Three.js game scene + HUD + loader
+│   │   ├── api.ts              # Typed fetch helpers for /api routes
 │   │   └── engine/
 │   │       ├── GameManager.ts  # Game loop, bolt firing/collision, scoring
 │   │       ├── Creature.ts     # Alien entity (procedural), movement patterns, dissolve
@@ -79,7 +82,9 @@ nightwatch/
 │   │       └── environment/    # Night sky, moon, stars, trees, crystals, mist
 │   ├── server/                 # Backend — runs on Devvit servers
 │   │   ├── index.ts            # Hono app, mounts all routes
-│   │   ├── core/               # Server utilities
+│   │   ├── core/
+│   │   │   ├── post.ts         # Creates the interactive post
+│   │   │   └── leaderboard.ts  # Redis data layer (scores, stats)
 │   │   └── routes/             # API, menu actions, forms, triggers
 │   └── shared/
 │       └── api.ts              # TypeScript types shared across client & server
@@ -92,14 +97,75 @@ nightwatch/
 
 Nightwatch runs as a Devvit Web interactive post with two entrypoints:
 
-1. **Splash screen** — Rendered inline in the Reddit feed. Shows the game title and a Play button.
+1. **Splash screen** — Rendered inline in the Reddit feed. Shows the title, the tagline, the viewer's standing (carried streak, best score, rank, watches left tonight — fetched from `/api/init`), and the Play button.
 2. **Game scene** — Full Three.js 3D scene in first person. Opens when the user clicks Play.
 
 The player grips a two-handed alien energy pistol in first-person view. Alien entities — floating octopus-like things with a breathing bell and seven writhing tentacles — approach along a dark, foggy path flanked by crystal growths, as near-black silhouettes rimmed in teal bioluminescence with glowing almond eyes, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
 
 Tap to fire an energy bolt toward that point. It flies straight, so a weaving alien can drift out of its path — lead your shots. A hit dissolves the alien in a burst of teal light and builds your streak; a miss (or an alien reaching you) breaks it. The challenge escalates: aliens that reach you make the rest faster, spawn intervals tighten, and movement patterns become trickier.
 
-The client communicates with the Devvit server via API routes (`/api/*`). The server handles game state persistence, menu actions for moderators, and app lifecycle events.
+The client communicates with the Devvit server via API routes (`/api/*`). The server handles score persistence and leaderboards, menu actions for moderators, and app lifecycle events.
+
+## Full-Stack Architecture
+
+Nightwatch follows the architecture Reddit recommends for Devvit Web apps: a static webview client, a stateless serverless backend, Redis as the only persistence, and identity taken from the platform — never from the client.
+
+```
+┌─────────────────────────┐        ┌──────────────────────────┐
+│  Game client (webview)  │        │  Reddit platform         │
+│  Three.js in the post   │        │  menus · triggers · forms│
+└───────────┬─────────────┘        └────────────┬─────────────┘
+            │ fetch /api/*                      │ /internal/*
+            ▼                                   ▼
+┌──────────────────────────────────────────────────────────────┐
+│         Hono server — Devvit serverless runtime              │
+│         dist/server/index.cjs · stateless per request        │
+│   /api/init · /api/score · /api/leaderboard · /internal/*    │
+└───────────┬──────────────────────────────────┬───────────────┘
+            │ zAdd / zRange / hIncrBy          │ submitCustomPost
+            ▼                                  ▼
+┌─────────────────────────┐        ┌──────────────────────────┐
+│  Redis (built in)       │        │  Reddit API              │
+│  leaderboard + stats    │        │  posts · user identity   │
+└─────────────────────────┘        └──────────────────────────┘
+```
+
+### API routes
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/api/init` | GET | Viewer identity + ready-screen stats (best score/streak, rank, carried streak, plays left) |
+| `/api/run/start` | POST | Reserve one of today's two plays; returns the streak the run starts from |
+| `/api/score` | POST | Submit a finished run `{score, bestStreak, misses, endStreak}` |
+| `/api/leaderboard` | GET | Top 10 all-time + the requesting player's own rank |
+| `/internal/menu/post-create` | POST | Moderator menu action — creates a game post |
+| `/internal/triggers/on-app-install` | POST | App lifecycle hook |
+
+Request/response contracts live in `src/shared/api.ts`, compiled into both bundles so client and server can never drift apart.
+
+### Identity and anti-cheat
+
+The client never sends a username. Every `/api` request runs with Devvit's request context, and the server resolves the player via `reddit.getCurrentUsername()` — so a score can only ever be written to the account that actually played. Submissions are validated against the physics of a 60-second watch (score and streak caps, `streak ≤ score`, integer-only) and rejected with a 400 otherwise. Logged-out players get a 401 from `/api/score` and simply spectate the leaderboard.
+
+### Redis data model
+
+Redis is Devvit's built-in store — per-installation, durable across sessions and app updates, no setup.
+
+| Key | Type | Contents |
+|-----|------|----------|
+| `lb:alltime` | sorted set | member = username, score = best run (kept via `zScore` guard, read with reverse `zRange`) |
+| `player:{username}` | hash | `runs`, `aliensDown`, `misses`, `bestScore`, `bestStreak`, `currentStreak` (the carry) |
+| `plays:{username}:{date}` | counter | Watches started today (UTC); expires after 48 h — enforces the two-per-day cap |
+
+### The lifecycle of a watch
+
+1. **Ready screen** — the client GETs `/api/init`; the server returns the viewer's stats (best score, best streak, all-time rank, the streak they're carrying, and how many watches they have left tonight). The Begin Watch button disables itself when tonight's plays are spent.
+2. **Begin Watch** — the client POSTs `/api/run/start`. The server increments today's play counter (the increment *is* the reservation — quitting mid-run still spends the play) and returns the carried streak. The game seeds its streak counter from it.
+3. **The watch** — hits extend the streak on top of the carry; any miss resets it to 0, exactly as within a single run.
+4. **Watch ends** — the client POSTs the run to `/api/score`. The server validates it against the carry it handed out in step 2 (zero misses means `endStreak` must equal `carry + score` exactly; any other combination is a forged request), updates lifetime stats, stores `endStreak` as the new carry, and updates the leaderboard if the score beat the player's best.
+5. **End screen** — the client GETs `/api/leaderboard` and renders the top 5, the player's own rank, and where their streak now stands going into the next watch.
+
+Every call fails soft: a network error or logged-out session never blocks play — logged-out players get uncapped casual runs with no carry and no leaderboard writes.
 
 ## Contributing
 

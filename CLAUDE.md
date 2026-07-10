@@ -25,6 +25,8 @@ Every visual decision obeys one rule: **the scene is layered near-black paper-cu
 - **Bolt misses** (flies past, hits the ground, burns out) → streak resets, counts as a miss
 - **Alien reaching the player** → miss, streak resets, speed penalty
 - Consecutive alien-reaches make aliens approach faster; a hit resets the speed to base
+- **Streaks carry across watches**: a run starts from the player's server-stored `currentStreak` and writes its end-of-run streak back; only a miss resets it. Logged-out players get no carry.
+- **Two watches per day** per logged-in player, server-enforced (UTC day, counter key with 48h expiry). Starting a run consumes a play even if abandoned. Logged-out players are uncapped (casual, no persistence).
 
 ## Tech Stack
 
@@ -50,7 +52,7 @@ npm run login        # Authenticate CLI with Reddit
 The project follows Devvit's client/server split pattern:
 
 - **`src/client/`** — Two HTML entrypoints defined in `devvit.json`:
-  - `splash.html` (inline, default) — title screen shown in Reddit feed
+  - `splash.html` (inline, default) — title screen shown in Reddit feed: tagline + player standing chips (carried streak / best / rank / watches left, fetched fail-soft from `/api/init`) + Play button
   - `game.html` — full Three.js game scene with CSS loader, opened when user clicks Play
   - Splash→Game navigation uses `requestExpandedMode(event, 'game')` from `@devvit/web/client`
 
@@ -66,13 +68,16 @@ The project follows Devvit's client/server split pattern:
   - `environment/Props.ts` — dead trees (recursive branching merged into one geometry), crystal-shard clusters placed from a `crystalSpots` array (one tall faceted spike + smaller leaning shards per spot), patch-clustered grass with wind sway injected via `onBeforeCompile` (displacement ∝ height², `frustumCulled = false` since tips exceed static bounds) + rocks (each scatter one merged geometry) — all silhouette cutouts (grass has its own material for the wind uniform, rest share `SILHOUETTE_MAT`); drifting additive mist planes, occluding smoke clouds (normal alpha blending + renderOrder 3 so they genuinely hide aliens drifting behind them — a difficulty mechanic, not just decoration), teal spore-mote Points (fully vertex-shader animated, same color language as the alien rims), plus exported CanvasTexture makers for the ground's emissive moonlight pool (not tiled, maps 1:1) and the path (alpha-feathered ragged edges — its material needs `transparent: true`).
 
 - **`src/server/`** — Hono app (`index.ts`) mounting routes:
-  - `/api/*` — game API endpoints (client fetches these)
+  - `/api/*` (`routes/api.ts`) — `/init` (identity + ready-screen stats), `/run/start` (POST — reserves a daily play, returns the carry streak), `/score` (POST, validated), `/leaderboard`. **Identity always comes from `reddit.getCurrentUsername()` via Devvit's request context — never from client-sent params.** Score submissions are shape-checked in the route (integer caps) and carry-consistency-checked in `submitScore` (zero misses ⇒ `endStreak === carryIn + score` exactly; any miss ⇒ `endStreak ≤ score`; `bestStreak` between the two) — the server validates against the carry *it* handed out at `/run/start`.
   - `/internal/menu/*` — subreddit menu actions (e.g., "Create Nightwatch Post")
   - `/internal/form/*` — Devvit form handlers
   - `/internal/triggers/*` — app lifecycle events (install, etc.)
   - `core/post.ts` — creates Reddit custom posts via `reddit.submitCustomPost()`
+  - `core/leaderboard.ts` — Redis data layer. Keys: `lb:alltime` (zset, member=username, score=best run — guarded by `zScore` so only improvements write), `player:{username}` (hash of lifetime stats incl. `currentStreak`, the carry), `plays:{username}:{utc-date}` (daily play counter, 48h expiry, `incrBy` is the reservation). Descending rank = `zCard − zRank`.
 
-- **`src/shared/api.ts`** — Response types shared between client and server
+- **`src/shared/api.ts`** — Request/response contracts shared between client and server (requests carry no identity by design)
+
+- **`src/client/api.ts`** — typed fetch wrappers for `/api/*`; all fail soft to null so the end screen never blocks on the network (logged-out players 401 on `/score` and still see the board)
 
 ## TypeScript Configuration
 
