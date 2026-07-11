@@ -23,9 +23,10 @@ const HIT_RADIUS = 0.5;
 // ~0.5 half-width of the alien so even splayed tentacles stay inside)
 const X_BOUND = 1.4;
 
-// HDR particle colors (>1 blooms)
-const GHOST_BURST_COLOR = new THREE.Color(0x00ffcc).multiplyScalar(2.0);
-const GHOST_WISP_COLOR  = new THREE.Color(0x007755).multiplyScalar(1.0);
+// HDR particle colors (>1 blooms) — the alien glows violet, deliberately a
+// different species of light from the pistol's teal
+const GHOST_BURST_COLOR = new THREE.Color(0xcc99ff).multiplyScalar(2.0);
+const GHOST_WISP_COLOR  = new THREE.Color(0x553388).multiplyScalar(1.0);
 
 // ─── SHARED STATIC RESOURCES (never mutated, never disposed here) ─────
 // Fully procedural alien entity: a floating octopus/jellyfish thing — a
@@ -81,10 +82,6 @@ function makeTentacleGeo(): THREE.CylinderGeometry {
 const BELL_GEO = makeBellGeo();
 const TENTACLE_GEO = makeTentacleGeo();
 const CORE_GEO = new THREE.SphereGeometry(0.10, 8, 8);
-// Eye: sphere scaled on the mesh to a flat almond (scaleX 1.8, scaleY 0.4)
-const EYE_VOID_GEO  = new THREE.SphereGeometry(0.060, 10, 6);
-const EYE_IRIS_GEO  = new THREE.SphereGeometry(0.034, 7, 5);
-const EYE_GLOW_GEO  = new THREE.SphereGeometry(0.095, 8, 6);
 const HIT_GEO = new THREE.SphereGeometry(HIT_RADIUS, 6, 6);
 
 const HIT_MAT = new THREE.MeshBasicMaterial();
@@ -105,9 +102,10 @@ const GHOST_MAT_TEMPLATE = new THREE.ShaderMaterial({
     uDissolve: { value: 0 },
     uFogDensity: { value: GHOST_FOG_DENSITY },
     uFogColor: { value: new THREE.Color(0x3d4a68) },
-    uBaseColor: { value: new THREE.Color(0x070d12) },
-    // teal bioluminescent rim — crosses the bloom threshold at glancing angles
-    uRimColor: { value: new THREE.Color(0x00ddaa) },
+    uBaseColor: { value: new THREE.Color(0x0c0a14) },
+    // violet bioluminescent rim — crosses the bloom threshold at glancing
+    // angles; hue-jittered per instance in the constructor
+    uRimColor: { value: new THREE.Color(0xb069ff) },
     // lateral undulation, weighted toward negative-y tips — 0 for the bell,
     // raised on the tentacle material clone so the shafts actually writhe
     uSway: { value: 0 },
@@ -171,13 +169,16 @@ const GHOST_MAT_TEMPLATE = new THREE.ShaderMaterial({
       col = mix(uFogColor, col, fog);
       // dissolve eats the body from the tail upward
       float dissolve = clamp(1.0 - uDissolve * (0.6 + 0.9 * (1.0 - vY)), 0.0, 1.0);
-      float alpha = uOpacity * dissolve * 0.92;
+      float alpha = uOpacity * dissolve;
       gl_FragColor = vec4(col, alpha);
     }
   `,
   blending: THREE.NormalBlending,
+  // Opaque body: full alpha at rest, depthWrite on so bell/tentacles
+  // self-occlude correctly. transparent stays true only so the dissolve
+  // and reach-fade can still eat the alpha on death.
   transparent: true,
-  depthWrite: false,
+  depthWrite: true,
   side: THREE.DoubleSide,
 });
 
@@ -210,7 +211,6 @@ export class Creature {
   private ghostMat: THREE.ShaderMaterial;
   private tentacleMat: THREE.ShaderMaterial;
   private coreMat: THREE.MeshBasicMaterial;
-  private eyeMats: THREE.MeshBasicMaterial[] = [];
   private bell: THREE.Mesh;
   private tentacles: THREE.Mesh[] = [];
   private tentaclePhases: number[] = [];
@@ -277,7 +277,7 @@ export class Creature {
     // pulses in animate() in time with the bell's breathing
     this.coreMat = this.own(
       new THREE.MeshBasicMaterial({
-        color: new THREE.Color(0x00ffcc).multiplyScalar(1.8),
+        color: new THREE.Color(0xcc88ff).multiplyScalar(1.9),
         transparent: true,
         opacity: 0.30,
         blending: THREE.AdditiveBlending,
@@ -288,55 +288,12 @@ export class Creature {
     core.position.y = 1.12;
     this.mesh.add(core);
 
-    // ── Almond eyes: flat ellipsoid (scaleX wide, scaleY thin) with teal iris glow.
-    // Eye center sits on the bell front: y≈1.22, x=±0.12, z=0.30. Each eye
-    // rolls slightly so the outer corner rides higher — predatory, not cute.
-    for (const sx of [-1, 1]) {
-      const eyeTilt = sx * -0.16;
-
-      // Void black shell
-      const voidMat = this.own(
-        new THREE.MeshBasicMaterial({ color: 0x010e0a, transparent: true, opacity: 0.98 })
-      );
-      this.eyeMats.push(voidMat);
-      const eyeVoid = new THREE.Mesh(EYE_VOID_GEO, voidMat);
-      eyeVoid.scale.set(1.8, 0.42, 1.0);
-      eyeVoid.position.set(sx * 0.12, 1.22, 0.30);
-      eyeVoid.rotation.z = eyeTilt;
-      this.mesh.add(eyeVoid);
-
-      // Teal iris — HDR boosted so it crosses the bloom threshold
-      const irisMat = this.own(
-        new THREE.MeshBasicMaterial({
-          color: new THREE.Color(0x00ffcc).multiplyScalar(2.6),
-          transparent: true,
-          opacity: 0.90,
-          blending: THREE.AdditiveBlending,
-        })
-      );
-      this.eyeMats.push(irisMat);
-      const iris = new THREE.Mesh(EYE_IRIS_GEO, irisMat);
-      iris.scale.set(1.6, 0.5, 1.0);
-      iris.position.set(sx * 0.12, 1.22, 0.31);
-      iris.rotation.z = eyeTilt;
-      this.mesh.add(iris);
-
-      // Outer additive glow shell
-      const glowMat = this.own(
-        new THREE.MeshBasicMaterial({
-          color: new THREE.Color(0x00ddaa).multiplyScalar(1.6),
-          transparent: true,
-          opacity: 0.10,
-          blending: THREE.AdditiveBlending,
-        })
-      );
-      this.eyeMats.push(glowMat);
-      const glow = new THREE.Mesh(EYE_GLOW_GEO, glowMat);
-      glow.scale.set(1.8, 0.5, 1.0);
-      glow.position.set(sx * 0.12, 1.22, 0.29);
-      glow.rotation.z = eyeTilt;
-      this.mesh.add(glow);
-    }
+    // Per-instance hue jitter so the swarm doesn't read as one stamped
+    // color — each alien sits a few degrees around the violet base.
+    const hueJitter = (Math.random() - 0.5) * 0.05;
+    (this.ghostMat.uniforms.uRimColor!.value as THREE.Color).offsetHSL(hueJitter, 0, 0);
+    (this.tentacleMat.uniforms.uRimColor!.value as THREE.Color).offsetHSL(hueJitter, 0, 0);
+    this.coreMat.color.offsetHSL(hueJitter, 0, 0);
 
     // Centered on the visual mass: bell 0.88–1.63, tentacles below
     const hit = new THREE.Mesh(HIT_GEO, HIT_MAT);
@@ -364,12 +321,12 @@ export class Creature {
     this.creatureState = 'disintegrating';
     this.stateTimer = 0;
 
-    // impact flash — short-lived teal plasma light + blooming glow
-    this.impactLight = new THREE.PointLight(0x55ffdd, IMPACT_INTENSITY, 1.4);
+    // impact flash — short-lived violet plasma light + blooming glow
+    this.impactLight = new THREE.PointLight(0xbb88ff, IMPACT_INTENSITY, 1.4);
     this.impactLight.position.set(0, 0.9, 0.2);
     this.mesh.add(this.impactLight);
     const glowMat = new THREE.MeshBasicMaterial({
-      color: new THREE.Color(0x99ffe6).multiplyScalar(2.0),
+      color: new THREE.Color(0xd8b8ff).multiplyScalar(2.0),
       transparent: true,
       opacity: 0.35,
       blending: THREE.AdditiveBlending,
@@ -486,7 +443,6 @@ export class Creature {
     // collapse toward the bell as the body dissolves
     const s = 1 - p * 0.45;
     this.mesh.scale.set(s, 1 - p * 0.2, s);
-    for (const mat of this.eyeMats) mat.opacity *= (1 - p);
     this.coreMat.opacity *= (1 - p);
   }
 
@@ -550,15 +506,6 @@ export class Creature {
       const phase = this.tentaclePhases[i]!;
       tent.rotation.x = this.tentacleBaseRx[i]! + Math.sin(t * 1.6 + phase) * 0.18;
       tent.rotation.z = this.tentacleBaseRz[i]! + Math.cos(t * 1.3 + phase * 1.4) * 0.16;
-    }
-
-    // Pulsing teal iris — animate only iris (index 1,4) and glow (index 2,5) mats
-    const flicker = Math.random() > 0.96 ? 0.20 : 1.0;
-    const pulse = (0.80 + Math.sin(t * 3.2) * 0.20) * flicker;
-    // eyeMats layout per eye: [void(0), iris(1), glow(2), void(3), iris(4), glow(5)]
-    for (let i = 0; i < this.eyeMats.length; i++) {
-      if (i % 3 === 1) this.eyeMats[i]!.opacity = 0.90 * pulse;
-      if (i % 3 === 2) this.eyeMats[i]!.opacity = 0.16 * pulse;
     }
 
     // Trailing wisps shed from around the tentacle tips

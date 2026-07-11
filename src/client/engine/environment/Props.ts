@@ -443,9 +443,9 @@ export class Props {
         void main() {
           float d = length(gl_PointCoord - 0.5);
           float a = smoothstep(0.5, 0.05, d) * vAlpha;
-          // slightly >1 teal so bright blinks catch a whisper of bloom —
+          // slightly >1 violet so bright blinks catch a whisper of bloom —
           // same color language as the aliens' rims
-          gl_FragColor = vec4(vec3(0.25, 1.25, 0.95) * a, a);
+          gl_FragColor = vec4(vec3(0.78, 0.48, 1.2) * a, a);
         }
       `,
       blending: THREE.AdditiveBlending,
