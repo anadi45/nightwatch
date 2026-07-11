@@ -26,15 +26,17 @@ const FilmShader = {
     varying vec2 vUv;
     void main() {
       vec4 c = texture2D(tDiffuse, vUv);
-      // vignette — corners fall to ~45%
+      // gentle vignette — starts well off-centre, corners keep ~72%.
+      // (The old 0.32→45% curve read as CRT corner shadowing.)
       float d = distance(vUv, vec2(0.5));
-      float vig = mix(0.45, 1.0, 1.0 - smoothstep(0.32, 0.82, d));
+      float vig = mix(0.72, 1.0, 1.0 - smoothstep(0.45, 0.85, d));
       c.rgb *= vig;
       // cool grade
       c.rgb *= vec3(0.97, 1.0, 1.06);
-      // animated grain, scaled down in bright areas so glow stays clean
+      // whisper of animated dither — just enough to break gradient banding
+      // in the sky, far below visible "TV static" level (was 0.025)
       float n = fract(sin(dot(vUv + fract(uTime * 61.7), vec2(12.9898, 78.233))) * 43758.5453);
-      c.rgb += (n - 0.5) * 0.025 / (1.0 + dot(c.rgb, vec3(1.0)));
+      c.rgb += (n - 0.5) * 0.006;
       gl_FragColor = c;
     }
   `,
@@ -56,6 +58,7 @@ export class PostFX {
   private bloomPass!: UnrealBloomPass;
   private filmPass!: ShaderPass;
   private renderer: THREE.WebGLRenderer;
+  private mobile = false;
 
   constructor(
     renderer: THREE.WebGLRenderer,
@@ -69,6 +72,7 @@ export class PostFX {
     if (!this.enabled) return;
 
     const mobile = window.matchMedia('(pointer: coarse)').matches;
+    this.mobile = mobile;
     const dpr = renderer.getPixelRatio();
 
     // HalfFloat keeps boosted colors >1 alive for the threshold test;
@@ -84,7 +88,7 @@ export class PostFX {
     this.bloomPass = new UnrealBloomPass(
       new THREE.Vector2(width, height),
       mobile ? 0.55 : 0.7, // strength
-      0.4, // radius
+      0.3, // radius — tighter halo; 0.4 smeared glows into a soft wash
       1.0 // threshold — only HDR-boosted pixels bloom
     );
     this.composer.addPass(this.bloomPass);
@@ -97,12 +101,16 @@ export class PostFX {
 
   setSize(cssWidth: number, cssHeight: number): void {
     if (!this.enabled) return;
-    this.composer.setPixelRatio(this.renderer.getPixelRatio());
+    const dpr = this.renderer.getPixelRatio();
+    this.composer.setPixelRatio(dpr);
     this.composer.setSize(cssWidth, cssHeight);
-    // composer.setSize propagates device-pixel sizes to every pass;
-    // re-sizing bloom with CSS pixels afterward keeps its mip chain at
-    // half CSS resolution regardless of DPR (quarter-res on dpr-2 phones).
-    this.bloomPass.setSize(cssWidth, cssHeight);
+    // composer.setSize propagates device-pixel sizes to every pass, so
+    // bloom must be re-sized after it. UnrealBloom's mip0 is half its
+    // input: plain CSS size meant quarter-device-res glow on dpr-2
+    // phones — the blocky "old TV" smear. Scale toward device res,
+    // capped for the mobile GPU budget.
+    const bloomScale = Math.min(dpr, this.mobile ? 1.5 : 2);
+    this.bloomPass.setSize(cssWidth * bloomScale, cssHeight * bloomScale);
   }
 
   render(): void {
