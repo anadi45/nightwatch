@@ -119,8 +119,9 @@ export class GameManager {
         ? intersects[0].point
         : this.raycaster.ray.at(20, new THREE.Vector3());
 
-    // launch from beside the right hand
-    const start = this.world.camera.localToWorld(new THREE.Vector3(0.28, -0.18, -0.45));
+    // launch from the pistol's muzzle tip so the tracer reads as coming
+    // out of the barrel, wherever the responsive layout put the gun
+    const start = this.hands.getMuzzleWorldPosition(new THREE.Vector3());
     const fireball = new Fireball(start, aim, this.fx);
     this.fireballs.push(fireball);
     this.world.scene.add(fireball.mesh);

@@ -16,6 +16,12 @@ const MAX_STREAK = 10_000;
 const isCount = (n: unknown, max: number): n is number =>
   typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= max;
 
+// Playtest subreddits are uncapped so devs can run any number of watches;
+// production installs enforce the daily limit. Must match devvit.json's
+// "dev.subreddit".
+const UNCAPPED_SUBREDDITS = new Set(['nightwatchgame_dev']);
+const isUncappedSub = (): boolean => UNCAPPED_SUBREDDITS.has(context.subredditName ?? '');
+
 // Identity comes from Devvit's request context — never from the client.
 api.get('/init', async (c) => {
   const username = await reddit.getCurrentUsername();
@@ -24,7 +30,7 @@ api.get('/init', async (c) => {
     postId: context.postId ?? '',
     username: username ?? 'anonymous',
     loggedIn: username !== undefined,
-    stats: username ? await getPlayerStats(username) : null,
+    stats: username ? await getPlayerStats(username, isUncappedSub()) : null,
   };
   return c.json(response);
 });
@@ -43,7 +49,7 @@ api.post('/run/start', async (c) => {
     };
     return c.json(casual);
   }
-  return c.json(await startRun(username));
+  return c.json(await startRun(username, isUncappedSub()));
 });
 
 api.post('/score', async (c) => {

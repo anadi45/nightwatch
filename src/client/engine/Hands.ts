@@ -6,8 +6,13 @@ import * as THREE from 'three';
 // glows green, and gloves keep the first-person layer in silhouette language.
 const SKIN_MAT    = new THREE.MeshStandardMaterial({ color: 0x241c14, roughness: 0.95 });
 const SLEEVE_MAT  = new THREE.MeshStandardMaterial({ color: 0x1a130c, roughness: 1.0 });
-const GUN_MAT     = new THREE.MeshStandardMaterial({ color: 0x0d1018, roughness: 0.55, metalness: 0.78 });
+// Lighter leather for glove pads/straps — breaks up the flat glove mass
+const GLOVE_PAD_MAT = new THREE.MeshStandardMaterial({ color: 0x362a1c, roughness: 0.9 });
+// Three metal tones: matte polymer frame, blued-steel slide, bright machined accents
+const GUN_MAT     = new THREE.MeshStandardMaterial({ color: 0x0d1018, roughness: 0.62, metalness: 0.45 });
 const GUN_SLIDE   = new THREE.MeshStandardMaterial({ color: 0x14181f, roughness: 0.42, metalness: 0.88 });
+const GUN_ACCENT  = new THREE.MeshStandardMaterial({ color: 0x27303e, roughness: 0.30, metalness: 0.95 });
+const BORE_MAT    = new THREE.MeshBasicMaterial({ color: 0x020408 });
 // Teal HDR energy elements — bloom threshold is 1.0 so multiplying above it lets the
 // glow bleed without a PointLight on every vent
 const ENERGY_MAT  = new THREE.MeshBasicMaterial({
@@ -57,6 +62,7 @@ export class Hands {
   private flashTimer    = 0;
   private muzzleLight:  THREE.PointLight;
   private muzzleGlowMat: THREE.MeshBasicMaterial;
+  private muzzleTip!: THREE.Object3D;
   private energyLight:  THREE.PointLight;
 
   private static readonly RECOIL_DURATION = 0.30;
@@ -81,11 +87,18 @@ export class Hands {
     this.layoutGun();
     camera.add(this.gunGroup);
 
-    // Grab the muzzle glow mesh material for opacity animation in update()
+    // Grab the muzzle glow mesh: its material animates in update(), and the
+    // mesh itself marks the muzzle tip that bolts must launch from
     const glowMesh = this.gunGroup.getObjectByName('muzzleGlow') as THREE.Mesh;
     this.muzzleGlowMat = glowMesh.material as THREE.MeshBasicMaterial;
+    this.muzzleTip = glowMesh;
 
     window.addEventListener('resize', () => this.layoutGun());
+  }
+
+  /** World-space position of the barrel tip — where bolts spawn. */
+  getMuzzleWorldPosition(target: THREE.Vector3): THREE.Vector3 {
+    return this.muzzleTip.getWorldPosition(target);
   }
 
   private layoutGun(): void {
@@ -94,9 +107,10 @@ export class Hands {
     const halfH  = Math.tan(fovRad / 2) * Math.abs(z);
     const halfW  = halfH * this.camera.aspect;
 
-    // Classic FPS: gun slightly right of centre, tucked into the bottom edge
-    const x = halfW * 0.32;
-    const y = -halfH * 0.86;
+    // Classic FPS: gun well right of centre, held high enough that the
+    // whole slide and both hands sit comfortably in frame
+    const x = halfW * 0.42;
+    const y = -halfH * 0.74;
 
     this.gunGroup.position.set(x, y, z);
     this.gunRestX = x;
@@ -107,10 +121,10 @@ export class Hands {
   // ── GUN + HANDS ASSEMBLY ─────────────────────────────────────────────
   private buildGunAssembly(): THREE.Group {
     const group = new THREE.Group();
-    // Classic FPS cant: yawed outward so the slide's right flank (with
-    // its energy vent) shows, plus a slight roll so the gun doesn't sit
-    // dead-vertical in frame.
-    group.rotation.set(this.gunRestRotX, 0.30, -0.11);
+    // Held straight down-range: barrel parallel to the view axis so the
+    // gun reads as aimed, with just a whisper of yaw and roll — enough to
+    // reveal the slide's left flank and serrations without a real cant.
+    group.rotation.set(this.gunRestRotX, 0.12, -0.05);
 
     this.buildGunGeometry(group);
     this.buildHands(group);
@@ -128,10 +142,32 @@ export class Hands {
     slide.position.set(0, 0.027, -0.008);
     group.add(slide);
 
-    // Front sight post
+    // Chamfer band bridging frame and slide — layered side profile
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.0245, 0.006, 0.118), GUN_MAT);
+    band.position.set(0, 0.016, -0.008);
+    group.add(band);
+
+    // Top rib running the slide's length (machined accent)
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.003, 0.095), GUN_ACCENT);
+    rib.position.set(0, 0.0405, -0.014);
+    group.add(rib);
+
+    // Rear cocking serrations — four thin plates each side
+    for (const sx of [-1, 1]) {
+      for (let i = 0; i < 4; i++) {
+        const serr = new THREE.Mesh(new THREE.BoxGeometry(0.002, 0.018, 0.004), GUN_ACCENT);
+        serr.position.set(sx * 0.0125, 0.027, 0.022 + i * 0.009);
+        group.add(serr);
+      }
+    }
+
+    // Front sight post with a teal dot
     const fSight = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.011, 0.005), GUN_MAT);
     fSight.position.set(0, 0.040, -0.058);
     group.add(fSight);
+    const fDot = new THREE.Mesh(new THREE.BoxGeometry(0.0028, 0.0028, 0.002), ENERGY_MAT);
+    fDot.position.set(0, 0.0435, -0.0605);
+    group.add(fDot);
 
     // Rear sight — two posts with gap between
     for (const sx of [-1, 1]) {
@@ -139,6 +175,30 @@ export class Hands {
       rPost.position.set(sx * 0.008, 0.040, 0.054);
       group.add(rPost);
     }
+
+    // ── Frame furniture (small machined parts sell the fidelity) ─────
+    // Slide-stop lever on the left flank
+    const slideStop = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.005, 0.024), GUN_ACCENT);
+    slideStop.position.set(-0.0155, 0.012, 0.012);
+    group.add(slideStop);
+
+    // Takedown pin passing through the frame
+    const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.0035, 0.0035, 0.031, 8), GUN_ACCENT);
+    pin.rotation.z = Math.PI / 2;
+    pin.position.set(0, 0.004, -0.030);
+    group.add(pin);
+
+    // Magazine release button
+    const magRelease = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.004, 8), GUN_ACCENT);
+    magRelease.rotation.z = Math.PI / 2;
+    magRelease.position.set(-0.016, -0.016, 0.030);
+    group.add(magRelease);
+
+    // Beavertail sweeping back over the web of the grip hand
+    const beavertail = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.006, 0.020), GUN_MAT);
+    beavertail.rotation.x = 0.45;
+    beavertail.position.set(0, -0.001, 0.075);
+    group.add(beavertail);
 
     // ── Barrel ───────────────────────────────────────────────────────
     const barrel = new THREE.Mesh(
@@ -149,6 +209,16 @@ export class Hands {
     barrel.position.set(0, 0, -0.108);
     group.add(barrel);
 
+    // Cooling fins + energy coil wound around the exposed barrel
+    for (const fz of [-0.148, -0.160]) {
+      const fin = new THREE.Mesh(new THREE.TorusGeometry(0.0095, 0.0022, 5, 12), GUN_ACCENT);
+      fin.position.set(0, 0, fz);
+      group.add(fin);
+    }
+    const coil = new THREE.Mesh(new THREE.TorusGeometry(0.0095, 0.0015, 5, 12), ENERGY_MAT);
+    coil.position.set(0, 0, -0.154);
+    group.add(coil);
+
     // Muzzle collar / compensator stub
     const muzzleCollar = new THREE.Mesh(
       new THREE.CylinderGeometry(0.011, 0.011, 0.024, 7),
@@ -157,6 +227,15 @@ export class Hands {
     muzzleCollar.rotation.x = Math.PI / 2;
     muzzleCollar.position.set(0, 0, -0.190);
     group.add(muzzleCollar);
+
+    // Machined muzzle crown + near-black bore recess
+    const crown = new THREE.Mesh(new THREE.TorusGeometry(0.009, 0.002, 5, 12), GUN_ACCENT);
+    crown.position.set(0, 0, -0.2035);
+    group.add(crown);
+    const bore = new THREE.Mesh(new THREE.CylinderGeometry(0.0065, 0.0065, 0.002, 10), BORE_MAT);
+    bore.rotation.x = Math.PI / 2;
+    bore.position.set(0, 0, -0.2025);
+    group.add(bore);
 
     // ── Grip / handle ─────────────────────────────────────────────────
     const grip = new THREE.Group();
@@ -171,6 +250,25 @@ export class Hands {
       ridge.position.set(0, gy, -0.018);
       grip.add(ridge);
     }
+    // Side panels with machined screws
+    for (const sx of [-1, 1]) {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.070, 0.026), GUN_SLIDE);
+      panel.position.set(sx * 0.0145, -0.046, 0.002);
+      grip.add(panel);
+      for (const py of [-0.018, -0.074]) {
+        const screw = new THREE.Mesh(new THREE.CylinderGeometry(0.0018, 0.0018, 0.002, 6), GUN_ACCENT);
+        screw.rotation.z = Math.PI / 2;
+        screw.position.set(sx * 0.0165, py, 0.002);
+        grip.add(screw);
+      }
+    }
+    // Magazine baseplate closing the grip, with a teal power-cell seam
+    const basePlate = new THREE.Mesh(new THREE.BoxGeometry(0.030, 0.008, 0.038), GUN_MAT);
+    basePlate.position.set(0, -0.092, 0);
+    grip.add(basePlate);
+    const cell = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.004, 0.004), ENERGY_MAT);
+    cell.position.set(0, -0.090, 0.019);
+    grip.add(cell);
     group.add(grip);
 
     // Trigger guard
@@ -246,18 +344,33 @@ export class Hands {
     // pistol dominates the composition, not the fingers.
     const HAND_SCALE = 0.6;
 
-    // ── Right hand (dominant): grips the handle ──────────────────────
+    // ── Right hand (dominant): real pistol grip ───────────────────────
+    // Hand local space is fingers +Y / palm +Z. The basis below maps:
+    //   palm    → −x  (flat against the grip's right panel)
+    //   fingers → −z, raked ~19° down (wrapping the front strap, matching
+    //             the grip's 0.20 rake)
+    //   knuckle line → up-forward (back of the hand faces right)
+    // Wrist sits high, web of the hand under the beavertail — that's how
+    // a pistol is actually held.
+    const rHand = this.buildHand(1, 1.30, 1.40, 1.05, true);
+    rHand.scale.setScalar(HAND_SCALE);
+    const gripBasis = new THREE.Matrix4().makeBasis(
+      new THREE.Vector3(0, 0.944, -0.331),
+      new THREE.Vector3(0, -0.331, -0.944),
+      new THREE.Vector3(-1, 0, 0)
+    );
+    rHand.quaternion.setFromRotationMatrix(gripBasis);
+    const rWrist = new THREE.Vector3(0.018, -0.008, 0.078);
+    rHand.position.copy(rWrist);
+    group.add(rHand);
+
+    // Right forearm reaches from the bottom-right of frame up to the wrist
     const rArm = new THREE.Group();
     this.buildArmBase(rArm);
-    const rHand = this.buildHand(1, 1.25, 1.35, 1.05);
-    rHand.position.y = 0.07;
-    rHand.rotation.x = -0.52;
-    rArm.add(rHand);
     rArm.scale.setScalar(HAND_SCALE);
-    // Arm rises from behind the grip; with rotation.x -0.88 and the hand's
-    // own -0.52, the palm lands centred on the grip shaft (~y -0.06, z 0.064)
-    rArm.position.set(0.010, -0.098, 0.125);
-    rArm.rotation.set(-0.88, 0.04, 0.09);
+    const rDir = new THREE.Vector3(-0.05, 0.75, -0.66).normalize();
+    rArm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), rDir);
+    rArm.position.copy(rWrist).addScaledVector(rDir, -0.042);
     group.add(rArm);
 
     // ── Left hand (support): braces under the barrel ─────────────────
@@ -288,6 +401,14 @@ export class Hands {
     seg1.position.y = spec.len1 / 2;
     knuckle.add(seg1);
 
+    // Knuckle pad on the back of the glove (tactical padding)
+    const pad = new THREE.Mesh(
+      new THREE.BoxGeometry(spec.radius * 2.1, 0.008, 0.012),
+      GLOVE_PAD_MAT
+    );
+    pad.position.set(0, 0.006, -spec.radius - 0.001);
+    knuckle.add(pad);
+
     const joint = new THREE.Group();
     joint.position.y = spec.len1;
     joint.rotation.x = curl2;
@@ -302,7 +423,17 @@ export class Hands {
     return knuckle;
   }
 
-  private buildHand(side: 1 | -1, curl1: number, curl2: number, thumbCurl: number): THREE.Group {
+  /**
+   * @param triggerFinger when true, the index finger (nearest the thumb)
+   * only half-curls — resting on the trigger instead of in the fist
+   */
+  private buildHand(
+    side: 1 | -1,
+    curl1: number,
+    curl2: number,
+    thumbCurl: number,
+    triggerFinger = false
+  ): THREE.Group {
     const hand = new THREE.Group();
 
     const palm = new THREE.Mesh(
@@ -313,8 +444,22 @@ export class Hands {
     palm.position.y = 0.048;
     hand.add(palm);
 
+    // Back-of-hand guard plate (padded leather, breaks the smooth capsule)
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.042, 0.008), GLOVE_PAD_MAT);
+    guard.rotation.x = 0.12;
+    guard.position.set(0, 0.058, -0.019);
+    hand.add(guard);
+
+    // The index finger sits at x = -0.0285 on the right hand (side 1),
+    // mirrored for the left — nearest the thumb at side * -0.044
+    const indexX = side * -0.0285;
     for (const spec of FINGERS) {
-      hand.add(this.buildFinger(spec, curl1, curl2));
+      const isIndex = triggerFinger && spec.x === indexX;
+      hand.add(
+        isIndex
+          ? this.buildFinger(spec, curl1 * 0.45, curl2 * 0.30)
+          : this.buildFinger(spec, curl1, curl2)
+      );
     }
 
     const thumbRoot = new THREE.Group();
@@ -349,6 +494,17 @@ export class Hands {
     sleeve.position.y = -0.1;
     group.add(sleeve);
 
+    // Fabric fold rings — the sleeve bunches where the arm bends
+    for (const [fy, fr] of [
+      [-0.055, 0.054],
+      [-0.125, 0.058],
+    ] as const) {
+      const fold = new THREE.Mesh(new THREE.TorusGeometry(fr, 0.0045, 5, 10), SLEEVE_MAT);
+      fold.position.y = fy;
+      fold.rotation.x = Math.PI / 2;
+      group.add(fold);
+    }
+
     const cuff = new THREE.Mesh(
       new THREE.TorusGeometry(0.052, 0.008, 5, 10),
       SLEEVE_MAT
@@ -357,12 +513,26 @@ export class Hands {
     cuff.rotation.x = Math.PI / 2;
     group.add(cuff);
 
+    // Glove strap cinched over the wrist, with a small metal buckle
+    const strap = new THREE.Mesh(new THREE.TorusGeometry(0.043, 0.006, 5, 10), GLOVE_PAD_MAT);
+    strap.position.y = 0.006;
+    strap.rotation.x = Math.PI / 2;
+    group.add(strap);
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.013, 0.005, 0.009), GUN_ACCENT);
+    buckle.position.set(0, 0.006, -0.045);
+    group.add(buckle);
+
     const forearm = new THREE.Mesh(
       new THREE.CapsuleGeometry(0.035, 0.1, 4, 8),
       SKIN_MAT
     );
     forearm.position.y = 0.02;
     group.add(forearm);
+
+    // Padded guard plate along the back of the forearm
+    const armGuard = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.062, 0.010), GLOVE_PAD_MAT);
+    armGuard.position.set(0, 0.028, -0.033);
+    group.add(armGuard);
   }
 
   // ── PUBLIC API ────────────────────────────────────────────────────────

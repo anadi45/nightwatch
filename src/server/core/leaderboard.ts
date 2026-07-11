@@ -37,8 +37,8 @@ async function getCarryStreak(username: string): Promise<number> {
   return Number((await redis.hGetAll(playerKey(username)))['currentStreak'] ?? '0');
 }
 
-/** Everything the ready screen shows for a logged-in player. */
-export async function getPlayerStats(username: string): Promise<PlayerStats> {
+/** Everything the splash card shows for a logged-in player. */
+export async function getPlayerStats(username: string, uncapped = false): Promise<PlayerStats> {
   const hash = await redis.hGetAll(playerKey(username));
   const score = await redis.zScore(LB_KEY, username);
   let rank: number | null = null;
@@ -51,7 +51,9 @@ export async function getPlayerStats(username: string): Promise<PlayerStats> {
     bestStreak: Number(hash['bestStreak'] ?? '0'),
     rank,
     carryStreak: Number(hash['currentStreak'] ?? '0'),
-    playsRemaining: Math.max(0, MAX_PLAYS_PER_DAY - (await getPlaysUsedToday(username))),
+    playsRemaining: uncapped
+      ? null
+      : Math.max(0, MAX_PLAYS_PER_DAY - (await getPlaysUsedToday(username))),
   };
 }
 
@@ -60,19 +62,21 @@ export async function getPlayerStats(username: string): Promise<PlayerStats> {
  * even if the player quits mid-run — the increment IS the reservation.
  * The returned runId makes this run's submission idempotent: the client
  * sends a keepalive copy when the page closes, and only one write lands.
+ * `uncapped` (playtest subreddits) still counts plays — for the runId —
+ * but never refuses one.
  */
-export async function startRun(username: string): Promise<RunStartResponse> {
+export async function startRun(username: string, uncapped = false): Promise<RunStartResponse> {
   const key = playsKey(username);
   const used = await redis.incrBy(key, 1);
   await redis.expire(key, 60 * 60 * 48);
-  if (used > MAX_PLAYS_PER_DAY) {
+  if (!uncapped && used > MAX_PLAYS_PER_DAY) {
     return { type: 'runStart', allowed: false, playsRemaining: 0, carryStreak: 0, runId: null };
   }
   const day = new Date().toISOString().slice(0, 10);
   return {
     type: 'runStart',
     allowed: true,
-    playsRemaining: MAX_PLAYS_PER_DAY - used,
+    playsRemaining: uncapped ? null : MAX_PLAYS_PER_DAY - used,
     carryStreak: await getCarryStreak(username),
     runId: `${day}:${used}`,
   };
