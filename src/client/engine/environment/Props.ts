@@ -163,6 +163,7 @@ export class Props {
 
   constructor() {
     this.group = new THREE.Group();
+    // Near ring flanking the path…
     for (let i = 0; i < 10; i++) {
       const side = i % 2 === 0 ? -1 : 1;
       this.crystalSpots.push({
@@ -171,6 +172,18 @@ export class Props {
         ry: (Math.random() - 0.5) * 0.9,
         rz: (Math.random() - 0.5) * 0.16,
         s: 1.15 + Math.random() * 0.35,
+      });
+    }
+    // …plus a wider scatter so fullscreen/wide aspects aren't empty at
+    // the flanks — bigger growths allowed since they're far off the path
+    for (let i = 0; i < 8; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      this.crystalSpots.push({
+        x: side * (4.5 + Math.random() * 4.5),
+        z: -4 - Math.random() * 28,
+        ry: (Math.random() - 0.5) * 0.9,
+        rz: (Math.random() - 0.5) * 0.2,
+        s: 1.3 + Math.random() * 0.8,
       });
     }
     this.buildTrees();
@@ -211,10 +224,10 @@ export class Props {
 
   private buildTrees(): void {
     const geos: THREE.BufferGeometry[] = [];
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 12; i++) {
       const side = i % 2 === 0 ? -1 : 1;
-      const x = side * (5 + Math.random() * 4);
-      const z = -4 - Math.random() * 26;
+      const x = side * (4.5 + Math.random() * 7);
+      const z = -3 - Math.random() * 30;
       const root = new THREE.Matrix4()
         .makeTranslation(x, 0, z)
         .multiply(new THREE.Matrix4().makeRotationY(Math.random() * Math.PI * 2))
@@ -277,9 +290,9 @@ export class Props {
       geo.applyMatrix4(m);
       geos.push(geo);
     };
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 18; i++) {
       const side = i % 2 === 0 ? -1 : 1;
-      addRock(side * (2.4 + Math.random() * 5.5), -2 - Math.random() * 27, 0.09 + Math.random() * 0.16);
+      addRock(side * (2.4 + Math.random() * 7.5), -2 - Math.random() * 29, 0.09 + Math.random() * 0.16);
     }
     for (let i = 0; i < 10; i++) {
       const side = i % 2 === 0 ? -1 : 1;
@@ -315,10 +328,10 @@ export class Props {
     };
 
     // patches scattered off the path…
-    for (let p = 0; p < 14; p++) {
+    for (let p = 0; p < 20; p++) {
       const side = p % 2 === 0 ? -1 : 1;
-      const px = side * (2.0 + Math.random() * 6.5);
-      const pz = -1.5 - Math.random() * 27;
+      const px = side * (2.0 + Math.random() * 8.5);
+      const pz = -1.5 - Math.random() * 29;
       const tufts = 5 + Math.floor(Math.random() * 5);
       for (let t = 0; t < tufts; t++) {
         addTuft(
@@ -359,7 +372,8 @@ export class Props {
   // ─── GROUND MIST ──────────────────────────────────────────────────
   private buildMist(): void {
     const tex = makeMistTexture();
-    const geo = new THREE.PlaneGeometry(11, 3.4);
+    // wide enough to reach the flanks on fullscreen/wide aspects
+    const geo = new THREE.PlaneGeometry(15, 3.8);
     const mat = new THREE.MeshBasicMaterial({
       map: tex,
       transparent: true,
@@ -407,13 +421,13 @@ export class Props {
 
   // ─── SPORES (drifting alien motes, animated in vertex shader) ─────
   private buildSpores(): THREE.ShaderMaterial {
-    const COUNT = 30;
+    const COUNT = 48;
     const positions = new Float32Array(COUNT * 3);
     const phases = new Float32Array(COUNT);
     for (let i = 0; i < COUNT; i++) {
-      positions[i * 3] = (Math.random() - 0.5) * 12;
-      positions[i * 3 + 1] = 0.3 + Math.random() * 1.4;
-      positions[i * 3 + 2] = -3 - Math.random() * 22;
+      positions[i * 3] = (Math.random() - 0.5) * 17;
+      positions[i * 3 + 1] = 0.3 + Math.random() * 1.7;
+      positions[i * 3 + 2] = -3 - Math.random() * 27;
       phases[i] = Math.random();
     }
     const geo = new THREE.BufferGeometry();

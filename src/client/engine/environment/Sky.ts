@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 const SKY_RADIUS = 60;
-const STAR_COUNT = 200;
+const STAR_COUNT = 320;
 
 /**
  * Night sky for the silhouette-horror look: a luminous moonlit horizon
@@ -106,7 +106,8 @@ export class Sky {
       positions[i * 3 + 1] = r * Math.cos(phi);
       positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
       phases[i] = Math.random();
-      sizes[i]  = 0.7 + Math.random() * 1.1; // smaller, more delicate
+      // mostly small delicate stars, with a scatter of brighter ones
+      sizes[i] = Math.random() < 0.12 ? 2.2 + Math.random() * 1.0 : 0.8 + Math.random() * 1.2;
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -121,8 +122,11 @@ export class Sky {
         uniform float uTime;
         varying float vAlpha;
         void main() {
-          vAlpha = 0.18 + 0.52 * (0.5 + 0.5 * sin(uTime * (0.4 + aPhase * 1.6) + aPhase * 6.283));
-          gl_PointSize = aSize;
+          // twinkle drives both brightness and size, so stars visibly
+          // sparkle instead of only dimming in place
+          float tw = 0.5 + 0.5 * sin(uTime * (0.5 + aPhase * 1.8) + aPhase * 6.283);
+          vAlpha = 0.20 + 0.65 * tw;
+          gl_PointSize = aSize * (0.75 + 0.45 * tw);
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
       `,
