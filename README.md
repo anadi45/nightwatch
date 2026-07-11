@@ -12,11 +12,11 @@ You are the night watchman — and tonight, something not of this world has take
 
 Your weapon is an alien energy pistol. **Tap anywhere to fire** a bolt toward that point. Hit an alien and it dissolves in a burst of light — your streak climbs. Miss, and your streak shatters. Let one reach you and things get worse — they speed up.
 
-As the 60-second watch progresses, spawn rates increase and alien movement gets trickier. Every shot counts: spraying bolts into the dark is the fastest way to lose your streak.
+As the 60-second run progresses, spawn rates increase and alien movement gets trickier. Every shot counts: spraying bolts into the dark is the fastest way to lose your streak.
 
-The streak is the real game: it **carries between watches** — end tonight's watch on a streak of 14 and tomorrow's begins at 14 — and only a miss ever resets it. You get **two watches per night**, so every watch matters.
+The streak is the real game: it **survives between runs** — end tonight on a streak of 14 and tomorrow starts at 14 — and only a miss ever resets it. You get **two runs a night**, so both have to count.
 
-One pistol. Two watches. How long can you keep the streak alive?
+One pistol. Two runs a night. How long can you keep the streak alive?
 
 ## Tech Stack
 
@@ -97,7 +97,7 @@ nightwatch/
 
 Nightwatch runs as a Devvit Web interactive post with two entrypoints:
 
-1. **Splash screen** — Rendered inline in the Reddit feed. Shows the title, the tagline, the viewer's standing (carried streak, best score, rank, watches left tonight — fetched from `/api/init`), and the Play button.
+1. **Splash screen** — Rendered inline in the Reddit feed. Shows the title, the tagline, the viewer's standing (carried streak, best score, rank, runs left tonight — fetched from `/api/init`), and the Play button.
 2. **Game scene** — Full Three.js 3D scene in first person. Opens when the user clicks Play.
 
 The player grips a two-handed alien energy pistol in first-person view. Alien entities — floating octopus-like things with a breathing bell and seven writhing tentacles — approach along a dark, foggy path flanked by crystal growths, as near-black silhouettes rimmed in violet bioluminescence with a pulsing inner heart, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
@@ -159,7 +159,7 @@ Redis is Devvit's built-in store — per-installation, durable across sessions a
 
 ### The lifecycle of a watch
 
-1. **Feed card & ready screen** — the splash card in the feed shows the viewer's standing (carried streak, best score, rank, watches left) from `/api/init`. The in-game ready screen fetches the same endpoint only to gate the Begin Watch button, which disables itself when tonight's plays are spent.
+1. **Feed card & ready screen** — the splash card in the feed shows the viewer's standing (carried streak, best score, rank, runs left) from `/api/init`. The in-game ready screen fetches the same endpoint only to gate the Start button, which disables itself when tonight's runs are spent.
 2. **Begin Watch** — the client POSTs `/api/run/start`. The server increments today's play counter (the increment *is* the reservation — quitting mid-run still spends the play) and returns the carried streak. The game seeds its streak counter from it.
 3. **The watch** — hits extend the streak on top of the carry; any miss resets it to 0, exactly as within a single run.
 4. **Watch ends** — the client POSTs the run to `/api/score`. The server validates it against the carry it handed out in step 2 (zero misses means `endStreak` must equal `carry + score` exactly; any other combination is a forged request), updates lifetime stats, stores `endStreak` as the new carry, and updates the leaderboard if the score beat the player's best.

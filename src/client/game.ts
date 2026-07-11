@@ -48,10 +48,10 @@ function init() {
     for (const btn of [btnStart, btnRestart]) {
       btn.disabled = out;
       btn.textContent = out
-        ? 'No watches left — return tomorrow'
+        ? 'Out of runs — back tomorrow'
         : btn === btnStart
-          ? 'Begin Watch'
-          : 'Watch Again';
+          ? 'Start'
+          : 'Play Again';
     }
   }
 
@@ -159,15 +159,15 @@ function init() {
       lbList.appendChild(li);
     }
 
-    const carryNote = carryStreak > 0 ? ` · streak of ${carryStreak} carries on` : '';
+    const carryNote = carryStreak > 0 ? ` · streak of ${carryStreak} still alive` : '';
     if (board.me && board.me.rank > 5) {
-      lbMe.textContent = `You: #${board.me.rank} — best ${board.me.score}${carryNote}`;
+      lbMe.textContent = `You're #${board.me.rank} — best ${board.me.score}${carryNote}`;
       lbMe.classList.remove('hidden');
     } else if (result?.newBest) {
       lbMe.textContent = `New personal best!${carryNote}`;
       lbMe.classList.remove('hidden');
     } else if (carryNote) {
-      lbMe.textContent = `Streak of ${carryStreak} carries to your next watch`;
+      lbMe.textContent = `Your streak of ${carryStreak} is still alive`;
       lbMe.classList.remove('hidden');
     } else {
       lbMe.classList.add('hidden');

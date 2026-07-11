@@ -32,16 +32,16 @@
   </div>
 
   <div id="ready-screen">
-    <h1 class="title">Tonight's Watch</h1>
-    <p class="instructions">Aliens emerge from the dark and close in on your position.<br/>
-      <strong style="color:#00ddaa">Tap to fire your energy pistol</strong> — every hit builds your streak.<br/>
-      <strong style="color:#ff4444">Miss and your streak breaks.</strong> Don't let them reach you.<br/>
-      Two watches per night. Your streak carries between watches — until you miss.</p>
-    <button id="btn-start" class="start-btn">Begin Watch</button>
+    <h1 class="title">Hold the Line</h1>
+    <p class="instructions">They come out of the dark. Straight at you.<br/>
+      <strong style="color:#00ddaa">Tap to fire</strong> — every hit builds your streak.<br/>
+      <strong style="color:#ff4444">One miss breaks it.</strong> Don't let them get close.<br/>
+      Two runs a night. Your streak survives between runs — until you miss.</p>
+    <button id="btn-start" class="start-btn">Start</button>
   </div>
 
   <div id="end-screen" class="hidden">
-    <h1 class="title">Watch Complete</h1>
+    <h1 class="title">Time's Up</h1>
     <div id="end-stats">
       <div class="stat-row"><span class="stat-label">Score</span><span id="end-score">0</span></div>
       <div class="stat-row"><span class="stat-label">Best Streak</span><span id="end-streak">0</span></div>
@@ -49,11 +49,11 @@
       <div class="stat-row"><span class="stat-label">Aliens</span><span id="end-total">0</span></div>
     </div>
     <div id="leaderboard" class="hidden">
-      <p class="lb-title">Top Watchmen</p>
+      <p class="lb-title">All-Time Best</p>
       <ol id="lb-list"></ol>
       <p id="lb-me" class="hidden"></p>
     </div>
-    <button id="btn-restart" class="start-btn">Watch Again</button>
+    <button id="btn-restart" class="start-btn">Play Again</button>
   </div>
 
   <script type="module" src="game.ts"></script>

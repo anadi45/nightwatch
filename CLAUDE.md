@@ -52,7 +52,7 @@ npm run login        # Authenticate CLI with Reddit
 The project follows Devvit's client/server split pattern:
 
 - **`src/client/`** — Two HTML entrypoints defined in `devvit.json`:
-  - `splash.html` (inline, default) — title screen shown in Reddit feed: tagline + player standing chips (carried streak / best / rank / watches left, fetched fail-soft from `/api/init`) + Play button
+  - `splash.html` (inline, default) — title screen shown in Reddit feed: tagline + player standing chips (carried streak / best / rank / runs left, fetched fail-soft from `/api/init`) + Play button
   - `game.html` — full Three.js game scene with CSS loader, opened when user clicks Play
   - Splash→Game navigation uses `requestExpandedMode(event, 'game')` from `@devvit/web/client`
 

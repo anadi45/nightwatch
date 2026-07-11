@@ -15,7 +15,7 @@ playBtn.addEventListener('click', (e) => {
 });
 
 if (context.username) {
-  subtitle.textContent = `One miss breaks everything, ${context.username}.`;
+  subtitle.textContent = `The dark is waiting, ${context.username}.`;
 }
 
 // Player standing right on the feed card — fail soft: the splash must
