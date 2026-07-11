@@ -29,6 +29,9 @@ const SPAWN_Z_MIN = -18;
 const SPAWN_Z_MAX = -12;
 const TARGET_Z = 4;
 const SPEED_PENALTY = 0.15;
+// Consecutive reaches speed up NEW spawns linearly, hard-capped — the old
+// accumulating penalty grew quadratically and spiralled unwinnably fast
+const MAX_SPEED = BASE_SPEED * 1.5;
 const FIREBALL_HIT_RADIUS = 0.75;
 
 // Must stay inside Creature's X_BOUND (1.4) — the fence line is at x ±2
@@ -265,7 +268,10 @@ export class GameManager {
         this.state.misses++;
         this.state.consecutiveMisses++;
         this.state.streak = 0;
-        this.currentSpeed += SPEED_PENALTY * this.state.consecutiveMisses;
+        this.currentSpeed = Math.min(
+          BASE_SPEED + SPEED_PENALTY * this.state.consecutiveMisses,
+          MAX_SPEED
+        );
         creature.reachPlayer();
         this.state.creaturesHandled++;
         this.callbacks.onStateChange({ ...this.state });

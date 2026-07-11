@@ -93,7 +93,10 @@ HIT_MAT.depthWrite = false;
 // dark silhouette with a teal rim is what actually pops out there. Fog is
 // manual: the body color mixes toward World's haze color with the same
 // FogExp2 curve (density must stay in sync with World, 0.06).
-const GHOST_FOG_DENSITY = 0.06;
+// Deliberately below World's 0.06: at gameplay depths (10–20 units) full
+// fog washed the alien into a pale translucent-looking ghost. The lighter
+// density keeps it a dark solid presence while still fading with distance.
+const GHOST_FOG_DENSITY = 0.045;
 
 const GHOST_MAT_TEMPLATE = new THREE.ShaderMaterial({
   uniforms: {
@@ -102,7 +105,7 @@ const GHOST_MAT_TEMPLATE = new THREE.ShaderMaterial({
     uDissolve: { value: 0 },
     uFogDensity: { value: GHOST_FOG_DENSITY },
     uFogColor: { value: new THREE.Color(0x3d4a68) },
-    uBaseColor: { value: new THREE.Color(0x0c0a14) },
+    uBaseColor: { value: new THREE.Color(0x030408) },
     // violet bioluminescent rim — crosses the bloom threshold at glancing
     // angles; hue-jittered per instance in the constructor
     uRimColor: { value: new THREE.Color(0xb069ff) },
@@ -156,13 +159,13 @@ const GHOST_MAT_TEMPLATE = new THREE.ShaderMaterial({
       float freck = sin(vPos.x * 41.0 + 1.7) * sin(vPos.y * 37.0 + 0.3) * sin(vPos.z * 43.0 + 2.1);
       freck = smoothstep(0.78, 0.97, freck);
       float fPulse = 0.55 + 0.45 * sin(uTime * 2.2 + vPos.y * 9.0 + vPos.x * 5.0);
-      col += uRimColor * freck * fPulse * 0.85;
+      col += uRimColor * freck * fPulse * 0.6;
 
       // faint radial muscle striations on the bell (fade out below the lip
       // and toward the crown so they don't stripe the tentacles)
       float bellBand = smoothstep(0.02, 0.15, vPos.y) * smoothstep(0.72, 0.45, vPos.y);
       float stripes = pow(0.5 + 0.5 * sin(atan(vPos.x, vPos.z) * 9.0), 6.0);
-      col += uRimColor * stripes * bellBand * 0.14;
+      col += uRimColor * stripes * bellBand * 0.10;
 
       // fade the silhouette into the haze exactly like FogExp2 would
       float fog = exp(-pow(uFogDensity * vDepth, 2.0));
