@@ -216,6 +216,8 @@ export class GameManager {
       spawnX: LANES[lane],
       pattern,
       fx: this.fx,
+      // drop in from the ship's underbelly bay hovering over the spawn zone
+      dropFrom: this.world.spawnDropHeight - 0.15,
     });
 
     this.creatures.push(creature);

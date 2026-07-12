@@ -10,12 +10,16 @@ export interface CreatureConfig {
   spawnX?: number;
   pattern?: MovementPattern;
   fx?: ParticleSystem;
+  /** Extra height to drop in from (the ship's bay) — eased out over DROP_DURATION. */
+  dropFrom?: number;
 }
 
 type CreatureState = 'approaching' | 'disintegrating' | 'fading';
 
 const DISINTEGRATE_DURATION = 0.5;
 const FADE_DURATION = 0.35;
+// Time an alien takes to drop from the ship's bay into its hover lane
+const DROP_DURATION = 0.9;
 const IMPACT_DURATION = 0.4;
 const IMPACT_INTENSITY = 4;
 const HIT_RADIUS = 0.5;
@@ -195,6 +199,7 @@ export class Creature {
   private stateTimer = 0;
   private spawnTime = performance.now();
   private fx: ParticleSystem | null;
+  private dropFrom: number;
 
   private pattern: MovementPattern;
   private baseX: number;
@@ -229,6 +234,7 @@ export class Creature {
     this.speed = config.speed;
     this.targetZ = config.targetZ;
     this.fx = config.fx ?? null;
+    this.dropFrom = config.dropFrom ?? 0;
     this.mesh = new THREE.Group();
     this.pattern = config.pattern ?? 'straight';
     this.baseX = THREE.MathUtils.clamp(config.spawnX ?? (Math.random() - 0.5) * 3, -X_BOUND, X_BOUND);
@@ -489,8 +495,14 @@ export class Creature {
 
   // ─── ANIMATION ────────────────────────────────────────────────────
   private animate(t: number, delta: number): void {
-    // Floating hover with gentle bob (the shader waver does the rest)
-    this.mesh.position.y = 0.15 + Math.sin(t * 1.8) * 0.12 + Math.sin(t * 0.7) * 0.06;
+    // Floating hover with gentle bob (the shader waver does the rest),
+    // plus an eased-out drop from the ship's bay on the first ~0.9s
+    let drop = 0;
+    if (this.dropFrom > 0 && t < DROP_DURATION) {
+      const k = t / DROP_DURATION;
+      drop = this.dropFrom * (1 - k) * (1 - k); // ease-out (fast then settle)
+    }
+    this.mesh.position.y = 0.15 + Math.sin(t * 1.8) * 0.12 + Math.sin(t * 0.7) * 0.06 + drop;
     this.mesh.position.x += Math.sin(t * 2.2) * 0.002;
     this.mesh.rotation.y = Math.sin(t * 1.0) * 0.08;
 

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { PostFX } from './PostFX';
 import { Sky } from './environment/Sky';
+import { Ship, SHIP_BAY_Y } from './environment/Ship';
 import { Props, makeMoonPoolTexture, makePathTexture } from './environment/Props';
 
 export class World {
@@ -11,7 +12,10 @@ export class World {
   private lanternLight: THREE.PointLight;
   private postfx: PostFX;
   private sky!: Sky;
+  private ship!: Ship;
   private props!: Props;
+  /** World-space Y of the ship's bay — GameManager drops aliens from here. */
+  readonly spawnDropHeight = SHIP_BAY_Y;
 
   constructor(container: HTMLElement) {
     this.scene = new THREE.Scene();
@@ -77,6 +81,8 @@ export class World {
   private buildEnvironment(): void {
     this.sky = new Sky();
     this.scene.add(this.sky.group);
+    this.ship = new Ship();
+    this.scene.add(this.ship.group);
     this.props = new Props();
     this.scene.add(this.props.group);
 
@@ -155,6 +161,7 @@ export class World {
   update(time: number): void {
     this.lanternLight.intensity = 2.2 + Math.sin(time * 3) * 0.3;
     this.sky.update(time);
+    this.ship.update(time);
     this.props.update(time);
   }
 
