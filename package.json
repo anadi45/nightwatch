@@ -14,7 +14,7 @@
     "launch": "npm run deploy && devvit publish",
     "login": "devvit login",
     "type-check": "tsc -p tsconfig.client.json --noEmit && tsc -p tsconfig.server.json --noEmit",
-    "lint": "eslint 'src/**/*.{ts,tsx}'",
+    "lint": "eslint src/",
     "prettier": "prettier --write 'src/**/*.{ts,tsx,css,html}'"
   },
   "dependencies": {

@@ -19,7 +19,7 @@ const isCount = (n: unknown, max: number): n is number =>
 // Playtest subreddits are uncapped so devs can run any number of watches;
 // production installs enforce the daily limit. Must match devvit.json's
 // "dev.subreddit".
-const UNCAPPED_SUBREDDITS = new Set(['nightwatchgame_dev']);
+const UNCAPPED_SUBREDDITS = new Set(['nightwatchgame_dev', 'nightwatchgame']);
 const isUncappedSub = (): boolean => UNCAPPED_SUBREDDITS.has(context.subredditName ?? '');
 
 // Identity comes from Devvit's request context — never from the client.
