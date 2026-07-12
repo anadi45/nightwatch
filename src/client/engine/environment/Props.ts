@@ -131,10 +131,10 @@ function makeMistTexture(): THREE.CanvasTexture {
 }
 
 // Shared cutout material for everything that reads as a black paper-cut
-// layer (crystals, monoliths, rocks). Never mutated, never disposed.
+// layer (boulders, rocks, trees). Never mutated, never disposed.
 const SILHOUETTE_MAT = new THREE.MeshBasicMaterial({ color: 0x05060c });
 
-interface CrystalSpot {
+interface BoulderSpot {
   x: number;
   z: number;
   ry: number;
@@ -143,12 +143,12 @@ interface CrystalSpot {
 }
 
 /**
- * Static alien-field decor: silhouetted dead trees, angular crystal-shard
- * growths, grass tufts, rocks, drifting ground mist, teal spore motes.
- * Each scatter (trees, crystals, rocks, grass) merges into a single
+ * Static alien-field decor: silhouetted dead trees, half-sunken boulder
+ * clusters, grass tufts, rocks, drifting ground mist, violet spore motes.
+ * Each scatter (trees, boulders, rocks, grass) merges into a single
  * geometry — the whole class costs ~8 draw calls. Everything is a black
  * cutout per the art direction; the spores are the only glowing element
- * and share the aliens' teal.
+ * and share the aliens' violet.
  */
 export class Props {
   readonly group: THREE.Group;
@@ -158,15 +158,15 @@ export class Props {
   private sporeMat: THREE.ShaderMaterial;
   /** Shared with the grass material's injected wind shader. */
   private grassTime = { value: 0 };
-  /** Crystal-cluster placements flanking the path (former grave spots). */
-  private crystalSpots: CrystalSpot[] = [];
+  /** Boulder-cluster placements flanking the path (former grave spots). */
+  private boulderSpots: BoulderSpot[] = [];
 
   constructor() {
     this.group = new THREE.Group();
     // Near ring flanking the path…
     for (let i = 0; i < 10; i++) {
       const side = i % 2 === 0 ? -1 : 1;
-      this.crystalSpots.push({
+      this.boulderSpots.push({
         x: side * (2.6 + Math.random() * 1.1),
         z: -2 - Math.random() * 26,
         ry: (Math.random() - 0.5) * 0.9,
@@ -178,7 +178,7 @@ export class Props {
     // the flanks — bigger growths allowed since they're far off the path
     for (let i = 0; i < 8; i++) {
       const side = i % 2 === 0 ? -1 : 1;
-      this.crystalSpots.push({
+      this.boulderSpots.push({
         x: side * (4.5 + Math.random() * 4.5),
         z: -4 - Math.random() * 28,
         ry: (Math.random() - 0.5) * 0.9,
@@ -187,7 +187,7 @@ export class Props {
       });
     }
     this.buildTrees();
-    this.buildCrystals();
+    this.buildBoulders();
     this.buildRocks();
     this.buildGrass();
     this.buildMist();
@@ -241,38 +241,37 @@ export class Props {
     this.group.add(trees);
   }
 
-  // ─── CRYSTAL SHARDS (alien growths flanking the path) ─────────────
-  // Each spot grows a cluster: one tall tilted spike plus smaller shards
-  // leaning out around it — angular where the graveyard was rounded.
-  private buildCrystals(): void {
+  // ─── BOULDERS (big weathered rocks flanking the path) ─────────────
+  // Each spot gets one large half-sunken boulder plus a satellite or two
+  // beside it — dodecahedrons squashed and tumbled so no two silhouettes
+  // repeat. (These replaced cone "crystal shards" that just read as cones.)
+  private buildBoulders(): void {
     const geos: THREE.BufferGeometry[] = [];
-    for (const spot of this.crystalSpots) {
-      const shards = 3 + Math.floor(Math.random() * 3);
-      for (let s = 0; s < shards; s++) {
+    for (const spot of this.boulderSpots) {
+      const satellites = 1 + Math.floor(Math.random() * 2);
+      for (let s = 0; s <= satellites; s++) {
         const main = s === 0;
-        const h = (main ? 0.9 + Math.random() * 0.8 : 0.3 + Math.random() * 0.4) * spot.s;
-        const r = h * (0.13 + Math.random() * 0.05);
-        // 5-sided cone reads as a faceted shard in silhouette
-        const shard = new THREE.ConeGeometry(r, h, 5);
-        shard.translate(0, h / 2, 0);
-        const m = new THREE.Matrix4()
-          .makeTranslation(
-            spot.x + (main ? 0 : (Math.random() - 0.5) * 0.6),
-            -0.04,
-            spot.z + (main ? 0 : (Math.random() - 0.5) * 0.6)
-          )
-          .multiply(new THREE.Matrix4().makeRotationY(spot.ry + Math.random() * Math.PI * 2))
-          .multiply(
-            new THREE.Matrix4().makeRotationZ(spot.rz + (Math.random() - 0.5) * (main ? 0.3 : 0.7))
-          );
-        shard.applyMatrix4(m);
-        geos.push(shard);
+        const r = (main ? 0.34 + Math.random() * 0.22 : 0.12 + Math.random() * 0.10) * spot.s;
+        const rock = new THREE.DodecahedronGeometry(r, 0);
+        const m = new THREE.Matrix4().compose(
+          new THREE.Vector3(
+            spot.x + (main ? 0 : (Math.random() - 0.5) * 1.1 * spot.s),
+            r * (0.4 + Math.random() * 0.18), // half-sunk into the earth
+            spot.z + (main ? 0 : (Math.random() - 0.5) * 1.1 * spot.s)
+          ),
+          new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI)
+          ),
+          new THREE.Vector3(1 + Math.random() * 0.35, 0.6 + Math.random() * 0.25, 1)
+        );
+        rock.applyMatrix4(m);
+        geos.push(rock);
       }
     }
     const merged = mergeGeometries(geos);
     for (const g of geos) g.dispose();
-    const crystals = new THREE.Mesh(merged, SILHOUETTE_MAT);
-    this.group.add(crystals);
+    const boulders = new THREE.Mesh(merged, SILHOUETTE_MAT);
+    this.group.add(boulders);
   }
 
   // ─── ROCKS (boulders off the path, pebbles hugging its edges) ─────

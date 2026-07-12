@@ -8,7 +8,7 @@ This project is an entry for Reddit's [**Games with a Hook**](https://redditgame
 
 ## The Game
 
-You are the night watchman — and tonight, something not of this world has taken the fields. Crystal growths split the earth beneath the dead trees, and alien entities glide out of the dark on unpredictable paths — weaving, zigzagging, flanking from the sides — their violet bioluminescence the only warning you get.
+You are the night watchman — and tonight, something not of this world has taken the fields. Boulders shoulder out of the earth beneath the dead trees, and alien entities glide out of the dark on unpredictable paths — weaving, zigzagging, flanking from the sides — their violet bioluminescence the only warning you get.
 
 Your weapon is an alien energy pistol. **Tap anywhere to fire** a bolt toward that point. Hit an alien and it dissolves in a burst of light — your streak climbs. Miss, and your streak shatters. Let one reach you and things get worse — they speed up.
 
@@ -79,7 +79,7 @@ nightwatch/
 │   │       ├── World.ts        # Scene, camera, lighting, environment
 │   │       ├── PostFX.ts       # Bloom post-processing (selective via HDR colors)
 │   │       ├── effects/        # Pooled particle system
-│   │       └── environment/    # Night sky, moon, stars, trees, crystals, mist
+│   │       └── environment/    # Night sky, moon, stars, trees, boulders, mist
 │   ├── server/                 # Backend — runs on Devvit servers
 │   │   ├── index.ts            # Hono app, mounts all routes
 │   │   ├── core/
@@ -100,7 +100,7 @@ Nightwatch runs as a Devvit Web interactive post with two entrypoints:
 1. **Splash screen** — Rendered inline in the Reddit feed. Shows the title, the tagline, the viewer's standing (carried streak, best score, rank, runs left tonight — fetched from `/api/init`), and the Play button.
 2. **Game scene** — Full Three.js 3D scene in first person. Opens when the user clicks Play.
 
-The player grips a two-handed alien energy pistol in first-person view. Alien entities — floating octopus-like things with a breathing bell and seven writhing tentacles — approach along a dark, foggy path flanked by crystal growths, as near-black silhouettes rimmed in violet bioluminescence with a pulsing inner heart, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
+The player grips a two-handed alien energy pistol in first-person view. Alien entities — floating octopus-like things with a breathing bell and seven writhing tentacles — approach along a dark, foggy path flanked by half-sunken boulders, as near-black silhouettes rimmed in violet bioluminescence with a pulsing inner heart, using unpredictable movement patterns — weaving, zigzagging, or flanking from the sides.
 
 Tap to fire an energy bolt toward that point. It flies straight, so a weaving alien can drift out of its path — lead your shots. A hit dissolves the alien in a burst of teal light and builds your streak; a miss (or an alien reaching you) breaks it. The challenge escalates: aliens that reach you make the rest faster, spawn intervals tighten, and movement patterns become trickier.
 
