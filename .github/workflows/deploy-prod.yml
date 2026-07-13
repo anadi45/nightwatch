@@ -32,3 +32,8 @@ jobs:
 
       - name: Upload to Devvit
         run: npx devvit upload
+
+      - name: Publish to production
+        run: npx devvit publish
+        # First time: run `npx devvit publish` locally and select
+        # "don't ask me again" — after that this runs non-interactively.

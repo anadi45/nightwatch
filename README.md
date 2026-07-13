@@ -2,6 +2,13 @@
 
 A dark, atmospheric first-person Three.js game that runs directly inside Reddit feeds as an interactive post. Built on [Devvit Web](https://developers.reddit.com) — Reddit's developer platform.
 
+## Play It
+
+| | |
+|---|---|
+| **Live game** | [r/nightwatchgame](https://www.reddit.com/r/nightwatchgame/) — find the pinned Nightwatch post |
+| **App listing** | [developers.reddit.com/apps/nightwatchgame](https://developers.reddit.com/apps/nightwatchgame) |
+
 ## Hackathon
 
 This project is an entry for Reddit's [**Games with a Hook**](https://redditgameswithahook.devpost.com/) hackathon (June 17 – July 15, 2026), organized by Reddit.
