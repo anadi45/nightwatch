@@ -6,7 +6,7 @@ A dark, atmospheric first-person Three.js game that runs directly inside Reddit 
 
 | | |
 |---|---|
-| **Live game** | [r/nightwatchgame](https://www.reddit.com/r/nightwatchgame/) — find the pinned Nightwatch post |
+| **Live game** | [Play Nightwatch on Reddit](https://www.reddit.com/r/nightwatch_game/s/AGLvVbPzbZ) |
 | **App listing** | [developers.reddit.com/apps/nightwatchgame](https://developers.reddit.com/apps/nightwatchgame) |
 
 ## Hackathon
