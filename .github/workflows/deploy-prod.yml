@@ -35,5 +35,7 @@ jobs:
 
       - name: Publish to production
         run: npx devvit publish
-        # First time: run `npx devvit publish` locally and select
-        # "don't ask me again" — after that this runs non-interactively.
+        env:
+          # Skips the interactive "upload source zip?" consent prompt —
+          # devvit publish requires this and there's no CLI flag for it.
+          DEVVIT_ALLOW_SOURCE_UPLOAD: '1'
