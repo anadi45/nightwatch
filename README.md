@@ -169,6 +169,55 @@ Redis is Devvit's built-in store — per-installation, durable across sessions a
 
 Every call fails soft: a network error or logged-out session never blocks play — logged-out players get uncapped casual runs with no carry and no leaderboard writes.
 
+## GitHub Actions CI/CD
+
+Two workflows run automatically:
+
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| `deploy-prod.yml` | Push to `main` | Type-check → build → `devvit upload` (live update for all installed subreddits) |
+| `pr-preview.yml` | Any PR commit | Type-check → build → upload to dev slot → bot comments the playtest URL |
+
+### Setting up GitHub Secrets
+
+The workflows authenticate with Reddit using two repository secrets. Go to **Settings → Secrets and variables → Actions → New repository secret** and add:
+
+#### `DEVVIT_TOKEN`
+
+The full JSON blob that the Devvit CLI stores after `devvit login`.
+
+**macOS / Linux:**
+```bash
+cat ~/.devvit/token
+```
+
+**Windows (PowerShell):**
+```powershell
+Get-Content "$env:USERPROFILE\.devvit\token"
+```
+
+Copy the entire output (starts with `{"token":...`) as the secret value.
+
+#### `DEVVIT_SESSION_ID`
+
+A UUID the CLI generates for your local session.
+
+**macOS / Linux:**
+```bash
+cat ~/.devvit/session-id
+```
+
+**Windows (PowerShell):**
+```powershell
+Get-Content "$env:USERPROFILE\.devvit\session-id"
+```
+
+#### Token expiry
+
+`DEVVIT_TOKEN` contains a refresh token that lasts weeks to months. It will break if you run `devvit logout` or change your Reddit password. To refresh it: run `devvit login` locally, fetch the new token with the commands above, and update the secret. `DEVVIT_SESSION_ID` never expires.
+
+> **Note:** `deploy-prod.yml` runs `devvit upload` but not `devvit publish` — publishing requires an interactive prompt that can't run in CI. Run `npx devvit publish` manually when submitting a release.
+
 ## Contributing
 
 Contributions are welcome! This is an open-source project — feel free to open issues, suggest features, or submit pull requests.
