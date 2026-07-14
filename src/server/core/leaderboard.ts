@@ -19,7 +19,9 @@ import type {
 // writes its end-of-run streak back — only a miss ever resets it.
 
 const LB_KEY = 'lb:alltime';
-const TOP_N = 10;
+// Raised from 10 so the splash's full-screen leaderboard reads as complete;
+// the end-of-run screen still only shows its own top-5 slice of this list.
+const TOP_N = 50;
 export const MAX_PLAYS_PER_DAY = 2;
 
 const playerKey = (username: string): string => `player:${username}`;
