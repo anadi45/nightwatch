@@ -16,8 +16,20 @@
       <div class="chip"><span class="chip-value" id="sp-rank">—</span><span class="chip-label">rank</span></div>
       <div class="chip"><span class="chip-value" id="sp-plays">2</span><span class="chip-label">runs left</span></div>
     </div>
-    <button id="play-btn">Play</button>
+    <div id="splash-actions">
+      <button id="play-btn" class="cta-btn">Play</button>
+      <button id="leaderboard-btn" class="cta-btn">Leaderboard</button>
+    </div>
   </div>
+
+  <div id="leaderboard-screen" class="hidden">
+    <button id="leaderboard-close" aria-label="Back">&larr; Back</button>
+    <h1 class="title lb-screen-title">Leaderboard</h1>
+    <p class="lb-title">All-Time Best</p>
+    <ol id="sp-lb-list"></ol>
+    <p id="sp-lb-me" class="hidden"></p>
+  </div>
+
   <script type="module" src="splash.ts"></script>
 </body>
 </html>
